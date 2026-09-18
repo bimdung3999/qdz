@@ -930,3 +930,296 @@ canvas{image-rendering:optimizeSpeed}
   });
 })();
 </script>
+<script>
+/* =========================================================
+   ZOMBIE PROTOCOL — UPDATE PACK v4
+   Quest  + Codex   : hiện ở MENU, ẩn trong trận
+   Mods   + Weather : hiện trong TRẬN, ẩn ở menu
+   ========================================================= */
+(function(){
+'use strict';
+
+/* ---------- TOAST ---------- */
+function toast(msg,color){
+  var t=document.createElement('div');
+  t.style.cssText='position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:10001;padding:9px 22px;border-radius:10px;background:rgba(10,15,29,0.96);border:2px solid '+(color||'#22d3ee')+';color:'+(color||'#a5f3fc')+';font-weight:900;font-size:12px;font-family:system-ui,sans-serif;box-shadow:0 0 22px '+(color||'#22d3ee')+'66;pointer-events:none;opacity:1;transition:opacity 0.5s';
+  t.textContent=msg;document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0'},1900);
+  setTimeout(function(){t.remove()},2500);
+}
+
+/* ---------- DETECT GAME STATE ---------- */
+function isPlaying(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs=document.querySelectorAll('h1');
+  for(var i=0;i<hs.length;i++) if(hs[i].textContent==='TỬ TRẬN') return false;
+  return true;
+}
+
+/* =========================================================
+   WEATHER SYSTEM — chỉ hiện TRONG TRẬN
+   ========================================================= */
+var Weather=(function(){
+  var TYPES=[
+    {id:'clear',   name:'TRỜI QUANG', color:'#fbbf24', fog:0,    desc:'Không hiệu ứng'},
+    {id:'rain',    name:'MƯA AXIT',   color:'#84cc16', fog:0.06, desc:'Giảm tầm nhìn nhẹ'},
+    {id:'fog',     name:'SƯƠNG MÙ',   color:'#cbd5e1', fog:0.32, desc:'Tầm nhìn kém'},
+    {id:'storm',   name:'BÃO CÁT',    color:'#f59e0b', fog:0.22, desc:'Bụi mù mịt'},
+    {id:'eclipse', name:'NGUYỆT THỰC',color:'#a855f7', fog:0.12, desc:'Ánh sáng tím kỳ ảo'}
+  ];
+  var cur=TYPES[0],canvas,ctx,ps=[],panel;
+  function mount(){
+    canvas=document.createElement('canvas');
+    canvas.id='znp-weather-canvas';
+    canvas.style.cssText='position:fixed;inset:0;z-index:9995;pointer-events:none;transition:opacity 0.4s;opacity:0';
+    document.body.appendChild(canvas);ctx=canvas.getContext('2d');
+    resize();window.addEventListener('resize',resize);
+
+    panel=document.createElement('div');panel.id='znp-weather-panel';
+    panel.style.cssText='position:fixed;top:210px;right:20px;z-index:9997;min-width:150px;background:rgba(10,15,29,0.94);border:2px solid #22d3ee;border-radius:12px;padding:8px 12px;font-family:system-ui;box-shadow:0 0 18px rgba(34,211,238,0.35);transition:opacity 0.3s,transform 0.3s';
+    panel.innerHTML='<div style="color:#67e8f9;font-weight:900;font-size:9px;letter-spacing:1.5px;opacity:0.7">☁️ THỜI TIẾT</div><div id="znp-weather-name" style="color:#fff;font-weight:900;font-size:13px;margin-top:2px">—</div><div id="znp-weather-desc" style="color:#94a3b8;font-size:9.5px;margin-top:1px">—</div>';
+    document.body.appendChild(panel);
+
+    pick();
+    setInterval(pick,90000);
+    requestAnimationFrame(loop);
+  }
+  function resize(){canvas.width=innerWidth;canvas.height=innerHeight;}
+  function pick(){
+    var pool=TYPES.filter(function(t){return t.id!==cur.id});
+    cur=pool[Math.floor(Math.random()*pool.length)];
+    var nameEl=document.getElementById('znp-weather-name');
+    var descEl=document.getElementById('znp-weather-desc');
+    if(nameEl){nameEl.textContent=cur.name;nameEl.style.color=cur.color;}
+    if(descEl)descEl.textContent=cur.desc;
+    if(panel){panel.style.borderColor=cur.color;panel.style.boxShadow='0 0 18px '+cur.color+'55';}
+    ps=[];
+    var N=cur.id==='rain'?140:cur.id==='storm'?90:cur.id==='eclipse'?45:0;
+    for(var i=0;i<N;i++)ps.push({x:Math.random()*canvas.width,y:Math.random()*canvas.height,v:cur.id==='rain'?8+Math.random()*6:cur.id==='storm'?4+Math.random()*6:0.3+Math.random()*0.5,len:8+Math.random()*10,r:1+Math.random()*3});
+    if(isPlaying())toast('☁️ Thời tiết: '+cur.name,cur.color);
+    try{window.__ZNP&&(window.__ZNP.weather=cur);}catch(e){}
+  }
+  function loop(){
+    if(!ctx){requestAnimationFrame(loop);return;}
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(cur.id==='rain'){
+      ctx.strokeStyle='rgba(132,204,22,0.55)';ctx.lineWidth=1.4;
+      for(var i=0;i<ps.length;i++){var p=ps[i];p.y+=p.v;if(p.y>canvas.height){p.y=-10;p.x=Math.random()*canvas.width}ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-1,p.y+p.len);ctx.stroke();}
+    }else if(cur.id==='storm'){
+      ctx.fillStyle='rgba(245,158,11,0.4)';
+      for(var i=0;i<ps.length;i++){var p=ps[i];p.x+=p.v;if(p.x>canvas.width){p.x=-10;p.y=Math.random()*canvas.height}ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();}
+    }else if(cur.id==='eclipse'){
+      ctx.fillStyle='rgba(168,85,247,0.35)';
+      for(var i=0;i<ps.length;i++){var p=ps[i];p.y-=p.v;if(p.y<-5){p.y=canvas.height+5;p.x=Math.random()*canvas.width}ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();}
+    }
+    if(cur.fog>0){ctx.fillStyle='rgba(15,23,42,'+cur.fog+')';ctx.fillRect(0,0,canvas.width,canvas.height);}
+    requestAnimationFrame(loop);
+  }
+  function setVisible(v){
+    if(canvas)canvas.style.opacity=v?'1':'0';
+    if(panel){panel.style.opacity=v?'1':'0';panel.style.transform=v?'translateX(0)':'translateX(120%)';panel.style.pointerEvents=v?'auto':'none';}
+  }
+  return{mount:mount,setVisible:setVisible,get:function(){return cur;}};
+})();
+
+/* =========================================================
+   QUEST SYSTEM — chỉ hiện ở MENU
+   ========================================================= */
+var Quest=(function(){
+  var KEY='znp_quests_v2';
+  var TPL=[
+    {id:'k_run',  name:'Thợ Săn Tốc Độ',desc:'Giết 20 Runner',target:20,track:'kills',reward:{gold:50}},
+    {id:'k_tank', name:'Diệt Xe Tăng',   desc:'Giết 5 Tank',   target:5, track:'kills',reward:{gold:80}},
+    {id:'k_brute',name:'Sức Mạnh Tuyệt Đối',desc:'Giết 2 Brute',target:2,track:'kills',reward:{gold:150}},
+    {id:'k_boss', name:'Kẻ Diệt Titan',  desc:'Giết 1 Boss',   target:1, track:'boss', reward:{gold:300}},
+    {id:'survive',name:'Sống Sót',       desc:'Sống qua 3 ngày',target:3,track:'day',  reward:{gold:100}},
+    {id:'kill100',name:'Máy Cày',        desc:'Giết 100 zombie',target:100,track:'kills',reward:{gold:120}},
+    {id:'lvl5',   name:'Tăng Cấp',       desc:'Đạt level 5',   target:5, track:'level',reward:{gold:70}}
+  ];
+  var S=load(),listEl,panel;
+  function dstr(){var d=new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();}
+  function load(){
+    try{var s=JSON.parse(localStorage.getItem(KEY));if(s&&s.date===dstr()&&Array.isArray(s.active))return s;}catch(e){}
+    var sh=TPL.slice().sort(function(){return 0.5-Math.random()});
+    return{date:dstr(),active:sh.slice(0,3).map(function(t){return Object.assign({},t,{progress:0,done:false,claimed:false})})};
+  }
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+  function mount(){
+    /* Panel đặt góc phải - hiển thị ở menu */
+    panel=document.createElement('div');panel.id='znp-quest-panel';
+    panel.style.cssText='position:fixed;top:30px;right:20px;z-index:9997;width:260px;background:rgba(10,15,29,0.94);border:2px solid #f59e0b;border-radius:14px;padding:12px;font-family:system-ui;box-shadow:0 0 22px rgba(245,158,11,0.4);color:#fff;backdrop-filter:blur(8px);transition:opacity 0.3s,transform 0.3s';
+    panel.innerHTML='<div id="znp-quest-h" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;cursor:pointer;user-select:none"><div style="color:#fbbf24;font-weight:900;font-size:12px;letter-spacing:1px">🎯 NHIỆM VỤ HÔM NAY</div><div id="znp-quest-t" style="color:#fbbf24;font-size:14px;font-weight:900">−</div></div><div id="znp-quest-list"></div>';
+    document.body.appendChild(panel);listEl=document.getElementById('znp-quest-list');
+    document.getElementById('znp-quest-h').onclick=function(){var b=listEl,t=document.getElementById('znp-quest-t');if(b.style.display==='none'){b.style.display='block';t.textContent='−'}else{b.style.display='none';t.textContent='+'}};
+    render();
+  }
+  function render(){
+    if(!listEl)return;
+    listEl.innerHTML=S.active.map(function(q,i){
+      var pct=Math.min(100,q.progress/q.target*100);
+      var col=q.done?'#22c55e':q.claimed?'#475569':'#f59e0b';
+      var btn='';
+      if(q.claimed)btn='<div style="color:#64748b;font-size:9px;font-weight:900;margin-top:4px;text-align:right">✓ ĐÃ NHẬN</div>';
+      else if(q.done)btn='<button data-c="'+i+'" style="margin-top:6px;width:100%;background:#f59e0b;color:#000;border:none;border-radius:6px;padding:5px;font-weight:900;font-size:10px;cursor:pointer">NHẬN +'+q.reward.gold+'💰</button>';
+      else btn='<div style="color:#fcd34d;font-size:9px;font-weight:900;margin-top:4px;text-align:right">+'+q.reward.gold+'💰</div>';
+      return '<div style="margin-bottom:8px;padding:6px;background:rgba(15,23,42,0.6);border-radius:8px;border-left:3px solid '+col+'">'+
+        '<div style="color:#e2e8f0;font-weight:900;font-size:11px">'+q.name+'</div>'+
+        '<div style="color:#94a3b8;font-size:9.5px;margin-bottom:4px">'+q.desc+'</div>'+
+        '<div style="height:5px;background:#0f172a;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+col+';transition:width 0.3s"></div></div>'+
+        '<div style="color:#94a3b8;font-size:9px;font-weight:900;margin-top:3px">'+Math.min(q.progress,q.target)+'/'+q.target+'</div>'+btn+'</div>';
+    }).join('');
+    listEl.querySelectorAll('[data-c]').forEach(function(b){b.onclick=function(){claim(+b.getAttribute('data-c'))}});
+  }
+  function claim(i){
+    var q=S.active[i];if(!q||!q.done||q.claimed)return;
+    q.claimed=true;
+    var g=(window.__getGold?window.__getGold():0)+q.reward.gold;
+    if(window.__setGold)window.__setGold(g);
+    try{window.dispatchEvent(new CustomEvent('znp:goldChanged',{detail:{gold:g}}))}catch(e){}
+    toast('🎯 Hoàn thành: '+q.name+' +'+q.reward.gold+'💰','#22c55e');
+    save();render();
+  }
+  function progress(track,val){
+    var ch=false;
+    S.active.forEach(function(q){
+      if(q.done||q.claimed||q.track!==track)return;
+      q.progress=Math.min(q.target,val);
+      if(q.progress>=q.target)q.done=true;
+      ch=true;
+    });
+    if(ch){save();render();}
+  }
+  function setVisible(v){
+    if(!panel)return;
+    panel.style.opacity=v?'1':'0';
+    panel.style.transform=v?'translateX(0)':'translateX(140%)';
+    panel.style.pointerEvents=v?'auto':'none';
+  }
+  return{mount:mount,progress:progress,render:render,setVisible:setVisible};
+})();
+
+/* =========================================================
+   WEAPON MODS — chỉ hiện TRONG TRẬN
+   ========================================================= */
+var Mods=(function(){
+  var KEY='znp_mods_v2';
+  var CAT=[
+    {id:'silencer',name:'Nòng Giảm Thanh',i:'🔇',desc:'+Range -Dmg',    price:80},
+    {id:'extmag',  name:'Băng Mở Rộng',   i:'📦',desc:'+50% Ammo',      price:120},
+    {id:'laser',   name:'Ống Ngắm Laser', i:'🔴',desc:'+15% Crit',      price:150},
+    {id:'ap',      name:'Đạn Xuyên Giáp', i:'🛡️',desc:'+30% vs Armor',  price:200},
+    {id:'rapid',   name:'Bolt Nhanh',     i:'⚡',desc:'+20% Fire Rate', price:180},
+    {id:'scope',   name:'Kính Ngắm 4x',   i:'🔭',desc:'+Range +Crit',   price:220}
+  ];
+  var S=(function(){try{var s=JSON.parse(localStorage.getItem(KEY));if(s&&Array.isArray(s.owned))return s}catch(e){}return{owned:[],equipped:{}}})();
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+  function owned(id){return S.owned.indexOf(id)>=0}
+  function buy(id){
+    var m=null;for(var i=0;i<CAT.length;i++)if(CAT[i].id===id)m=CAT[i];
+    if(!m||owned(id))return false;
+    var g=window.__getGold?window.__getGold():0;
+    if(g<m.price){toast('❌ Không đủ vàng (cần '+m.price+'💰)','#f87171');return false;}
+    if(window.__setGold)window.__setGold(g-m.price);
+    try{window.dispatchEvent(new CustomEvent('znp:goldChanged',{detail:{gold:g-m.price}}))}catch(e){}
+    S.owned.push(id);save();toast('✅ Đã mua '+m.name,'#22c55e');return true;
+  }
+  var btn;
+  function mount(){
+    btn=document.createElement('div');btn.id='znp-mods-btn';
+    btn.style.cssText='position:fixed;bottom:130px;right:20px;z-index:9998;background:linear-gradient(135deg,#7c3aed,#4c1d95);color:#fff;border:2px solid #a855f7;border-radius:12px;padding:10px 16px;font-weight:900;font-size:13px;cursor:pointer;box-shadow:0 0 20px rgba(168,85,247,0.6);font-family:system-ui;transition:opacity 0.3s,transform 0.3s';
+    btn.textContent='🔧 MOD SÚNG';
+    btn.onmouseenter=function(){btn.style.transform='scale(1.05)'};
+    btn.onmouseleave=function(){btn.style.transform='scale(1)'};
+    btn.onclick=openModal;document.body.appendChild(btn);
+  }
+  function openModal(){
+    var old=document.getElementById('znp-mods-modal');if(old){old.remove();return;}
+    var m=document.createElement('div');m.id='znp-mods-modal';
+    m.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(2,6,15,0.94);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui';
+    var g=window.__getGold?window.__getGold():0;
+    m.innerHTML='<div style="background:#0d1527;border:2px solid #a855f7;border-radius:16px;padding:20px;max-width:620px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 0 40px rgba(168,85,247,0.5)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:10px;margin-bottom:14px"><h2 style="color:#c4b5fd;font-weight:900;letter-spacing:2px;font-size:14px;margin:0">🔧 MOD VŨ KHÍ</h2><div style="display:flex;align-items:center;gap:12px"><div style="color:#fbbf24;font-weight:900;font-size:13px">💰 '+g+'</div><button id="znp-mods-x" style="background:rgba(239,68,68,0.2);border:1px solid #ef4444;color:#fca5a5;padding:4px 12px;border-radius:8px;font-weight:900;font-size:12px;cursor:pointer">✕</button></div></div>'+
+      '<div style="color:#94a3b8;font-size:11px;margin-bottom:12px">Mua mod để tăng chỉ số súng. Mod áp dụng toàn cục cho mọi vũ khí.</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">'+
+      CAT.map(function(x){var h=owned(x.id);return '<div style="padding:10px;border-radius:10px;border:1px solid '+(h?'#a855f7':'#475569')+';background:rgba(15,23,42,0.6)"><div style="display:flex;gap:8px;align-items:center"><div style="font-size:24px">'+x.i+'</div><div style="flex:1"><div style="color:#e9d5ff;font-weight:900;font-size:12px">'+x.name+'</div><div style="color:#94a3b8;font-size:10px">'+x.desc+'</div></div></div>'+(h?'<div style="color:#22c55e;font-size:10px;font-weight:900;margin-top:6px;text-align:center">✓ ĐÃ SỞ HỮU</div>':'<button data-buy="'+x.id+'" style="width:100%;margin-top:6px;padding:5px;border-radius:6px;border:1px solid '+(g>=x.price?'#fbbf24':'#475569')+';background:'+(g>=x.price?'#fbbf24':'#1e293b')+';color:'+(g>=x.price?'#000':'#64748b')+';font-weight:900;font-size:10px;cursor:pointer">MUA '+x.price+'💰</button>')+'</div>'}).join('')+'</div></div>';
+    document.body.appendChild(m);
+    m.onclick=function(e){if(e.target===m)m.remove()};
+    document.getElementById('znp-mods-x').onclick=function(){m.remove()};
+    m.querySelectorAll('[data-buy]').forEach(function(b){b.onclick=function(){if(buy(b.getAttribute('data-buy'))){m.remove();openModal();}}});
+  }
+  function setVisible(v){
+    if(!btn)return;
+    btn.style.opacity=v?'1':'0';
+    btn.style.transform=v?'scale(1)':'scale(0.85)';
+    btn.style.pointerEvents=v?'auto':'none';
+  }
+  return{mount:mount,setVisible:setVisible,owned:owned,get:function(){return S}};
+})();
+
+/* =========================================================
+   CODEX (SỔ TAY) — chỉ hiện ở MENU
+   ========================================================= */
+function setCodexVisible(v){
+  var b=document.getElementById('znp-codex-btn');
+  if(!b)return;
+  if(!b.style.transition)b.style.transition='opacity 0.3s, transform 0.3s';
+  b.style.opacity=v?'1':'0';
+  b.style.pointerEvents=v?'auto':'none';
+  b.style.transform=v?'scale(1)':'scale(0.85)';
+}
+
+/* =========================================================
+   QUEST HOOK
+   ========================================================= */
+var _lastKills=0,_lastDay=1,_lastLevel=1;
+setInterval(function(){
+  var Z=window.__ZNP;if(!Z||!Z.state||!Z.player)return;
+  var k=Z.state.kills||0;
+  if(k>_lastKills){Quest.progress('kills',k);_lastKills=k;}
+  var d=Z.state.day||1;
+  if(d>_lastDay){Quest.progress('day',d-1);_lastDay=d;}
+  var lv=Z.player.level||1;
+  if(lv>_lastLevel){Quest.progress('level',lv);_lastLevel=lv;}
+},800);
+
+/* =========================================================
+   VISIBILITY TOGGLE
+   Quest  + Codex   : menu       (!playing)
+   Mods   + Weather : in battle  (playing)
+   ========================================================= */
+var _lastP=null;
+setInterval(function(){
+  var p=isPlaying();
+  /* Menu elements */
+  Quest.setVisible(!p);
+  setCodexVisible(!p);
+  /* Battle elements */
+  Mods.setVisible(p);
+  Weather.setVisible(p);
+  /* Đóng modal Mod khi vừa chuyển playing → menu */
+  if(!p&&_lastP===true){
+    var mm=document.getElementById('znp-mods-modal');
+    if(mm)mm.remove();
+  }
+  _lastP=p;
+},400);
+
+/* =========================================================
+   MOUNT ALL
+   ========================================================= */
+function ready(cb){var r=document.getElementById('root');if(r&&r.children.length>0)return cb();setTimeout(function(){ready(cb)},300);}
+ready(function(){
+  setTimeout(function(){
+    Weather.mount();
+    Quest.mount();
+    Mods.mount();
+    /* Trạng thái ban đầu: đang ở menu → Quest+Codex hiện, Mod+Weather ẩn */
+    Quest.setVisible(true);
+    setCodexVisible(true);
+    Mods.setVisible(false);
+    Weather.setVisible(false);
+    console.log('[ZNP] v4 loaded — Quest/Codex ở menu, Mod/Weather trong trận');
+  },1000);
+});
+})();
+</script>
