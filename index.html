@@ -179,6 +179,7 @@ var _npcNames=["Minh","Lan","Hùng","Trang","Bảo","Vy","Khánh","Nhi","Quân",
 let _spawnNPCs=(count)=>{let _f=r.current,_cnt=count||1;for(let _i=0;_i<_cnt;_i++){let _ang=Math.random()*Math.PI*2,_dist=350+Math.random()*350,_roll=Math.random(),_type=_roll<0.35?"police":_roll<0.6?"doctor":"civilian",_hp=_type==="police"?140:_type==="doctor"?90:70,_shirt=_type==="police"?"#3b82f6":_type==="doctor"?"#e2e8f0":"#78716c";_npcs.current.push({x:_f.x+Math.cos(_ang)*_dist,y:_f.y+Math.sin(_ang)*_dist,type:_type,hp:_hp,maxHp:_hp,shirt:_shirt,radius:15,speed:120,angle:0,cooldown:0,walkPhase:Math.random()*Math.PI*2,hitFlash:0,wanderAngle:Math.random()*Math.PI*2,wanderTimer:0,healCd:0,name:_npcNames[Math.floor(Math.random()*_npcNames.length)],following:!1,life:200+Math.random()*140,talkCd:1.5})}};
 let j=performance.now(),X=0,_fpsFrames=0,_fpsAcc=0,z=(Q)=>{if(window.__DMG_NUMS){for(let _di=window.__DMG_NUMS.length-1;_di>=0;_di--){let _d=window.__DMG_NUMS[_di];_d.t-=0.016;_d.y+=_d.vy*0.016*60;if(_d.t<=0)window.__DMG_NUMS.splice(_di,1);}}
 window.__ZNP_PLAYER_POS={x:r.current.x,y:r.current.y};window.__ZNP_WEAPON_CURRENT=r.current.weapon;
+window.__ZNP=window.__ZNP||{};window.__ZNP.player=r.current;window.__ZNP.state=Ce.current;
 var _fc=window.__znpFpsCap||0;if(_fc>0&&Q-j<1000/_fc-1.5){fo.current=requestAnimationFrame(z);return;}_fpsFrames++;_fpsAcc+=Q-j;if(_fpsAcc>=500){try{__setFps(Math.round(_fpsFrames*1000/_fpsAcc))}catch(e){}_fpsFrames=0;_fpsAcc=0;}let q=Math.min((Q-j)/1000,0.1);j=Q;let f=r.current,H=Ce.current,Xe=L.current;if(Hl.current>0&&!Xe)Hl.current-=q;var _pcap=Je==="high"?350:Je==="med"?180:80;if(i.current.length>_pcap)i.current.splice(0,i.current.length-_pcap);let Be=Hl.current>0?0.35:1,R=Xe?0:q*Be,Ue=Rc(H.time);if(!Xe){if(H.time+=q*0.16*Be,H.time>=24){if(H.time-=24,H.day++,H.bossToday=!1,H.npcSpawnedToday=!1,H._npcLastPos=null,H._npcCd=0,H.day%3===0){let a=Math.random()*Math.PI*2;H.extraction={x:f.x+Math.cos(a)*1500,y:f.y+Math.sin(a)*1500,active:!0,timer:0,hold:0}}}}if(!Xe){if(H.lightningTimer-=q*Be,Ue.darkness>0.5&&H.lightningTimer<=0&&Math.random()<0.002)H.lightningTimer=5+Math.random()*10,H.lightningFlash=0.15}if(H.lightningFlash>0)H.lightningFlash-=q*Be;if(!Xe){if(f.dashCd>0)f.dashCd-=R;if(f.grenadeCd>0)f.grenadeCd-=R;if(f.damageTimer>0)f.damageTimer-=R;if(f.perks.regen)f.hp=Math.min(f.maxHp,f.hp+f.perks.regen*2*R);if(f.perks.shield&&f.damageTimer<=0&&f.armor<f.maxArmor)f.armor=Math.min(f.maxArmor,f.armor+f.perks.shield*5*R);
 if(f.perks.guardian){if(f.guardianCd>0)f.guardianCd-=R;if(f.hp<f.maxHp*0.25&&f.guardianCd<=0){f.armor=Math.min(f.maxArmor,f.armor+40*(f.perks.guardian||1));f.guardianCd=8;me(700,"sine",0.25,0.3,1300);for(let _gk=0;_gk<12;_gk++)i.current.push({x:f.x+(Math.random()-0.5)*30,y:f.y+(Math.random()-0.5)*30,vx:0,vy:-1.5,size:3,color:"#38bdf8",life:0.7,maxLife:0.7,type:"hitStar"});}}
 if(f.dashTimer>0){if(f.dashTimer-=R,f.dashTrail.push({x:f.x,y:f.y,life:0.3}),f.dashTrail.length>8)f.dashTrail.shift();f.x+=Math.cos(f.angle)*22*R*60*0.08,f.y+=Math.sin(f.angle)*22*R*60*0.08}else f.isDashing=!1;if(f.lungeX||f.lungeY){f.x+=f.lungeX*R*4,f.y+=f.lungeY*R*4;let _lk=Math.pow(0.005,R);f.lungeX*=_lk,f.lungeY*=_lk,Math.abs(f.lungeX)<0.2&&Math.abs(f.lungeY)<0.2&&(f.lungeX=0,f.lungeY=0)}if(f.invincible>0)f.invincible-=R;if(f.dashTrail.forEach((_)=>_.life-=R),f.dashTrail=f.dashTrail.filter((_)=>_.life>0),f.slashTimer>0){if(f.slashTimer-=R,f.slashTimer<0)f.slashTimer=0}if(f.recoil>0){if(f.recoil-=R*35,f.recoil<0)f.recoil=0}if(g.current>0){if(g.current-=R,g.current<0)g.current=0}if(f.buffs.speedTimer>0)f.buffs.speedTimer-=R,f.speed=f.baseSpeed*1.55;else f.speed=f.baseSpeed*(1+(f.perks.speed||0));
@@ -957,7 +958,7 @@ canvas{image-rendering:optimizeSpeed}
 /* ---------- TOAST ---------- */
 function toast(msg,color){
   var t=document.createElement('div');
-  t.style.cssText='position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:10001;padding:9px 22px;border-radius:10px;background:rgba(10,15,29,0.96);border:2px solid '+(color||'#22d3ee')+';color:'+(color||'#a5f3fc')+';font-weight:900;font-size:12px;font-family:system-ui,sans-serif;box-shadow:0 0 22px '+(color||'#22d3ee')+'66;pointer-events:none;opacity:1;transition:opacity 0.5s';
+  t.style.cssText='position:fixed;top:170px;right:20px;z-index:10001;padding:9px 22px;border-radius:10px;background:rgba(10,15,29,0.96);border:2px solid '+(color||'#22d3ee')+';color:'+(color||'#a5f3fc')+';font-weight:900;font-size:12px;font-family:system-ui,sans-serif;box-shadow:0 0 22px '+(color||'#22d3ee')+'66;pointer-events:none;opacity:1;transition:opacity 0.5s';
   t.textContent=msg;document.body.appendChild(t);
   setTimeout(function(){t.style.opacity='0'},1900);
   setTimeout(function(){t.remove()},2500);
@@ -1252,7 +1253,7 @@ function isPlaying(){
   for(var i=0;i<hs.length;i++) if(hs[i].textContent==='TỬ TRẬN') return false;
   return true;
 }
-function toast(m,c){var t=document.createElement('div');t.style.cssText='position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:10001;padding:9px 22px;border-radius:10px;background:rgba(10,15,29,0.96);border:2px solid '+(c||'#22d3ee')+';color:'+(c||'#a5f3fc')+';font-weight:900;font-size:12px;font-family:system-ui;box-shadow:0 0 22px '+(c||'#22d3ee')+'66;pointer-events:none;transition:opacity 0.4s';t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.style.opacity='0'},1800);setTimeout(function(){t.remove()},2300);}
+function toast(m,c){var t=document.createElement('div');t.style.cssText='position:fixed;top:170px;right:20px;z-index:10001;padding:9px 22px;border-radius:10px;background:rgba(10,15,29,0.96);border:2px solid '+(c||'#22d3ee')+';color:'+(c||'#a5f3fc')+';font-weight:900;font-size:12px;font-family:system-ui;box-shadow:0 0 22px '+(c||'#22d3ee')+'66;pointer-events:none;transition:opacity 0.4s';t.textContent=m;document.body.appendChild(t);setTimeout(function(){t.style.opacity='0'},1800);setTimeout(function(){t.remove()},2300);}
 window.__znpToast=toast;
 
 /* =========================================================
@@ -1475,7 +1476,7 @@ var Radio=(function(){
   var container,curMsg,lastWeather=null,lastDay=1,lastPlaying=false;
   function mount(){
     container=document.createElement('div');container.id='znp-radio';
-    container.style.cssText='position:fixed;bottom:8px;left:50%;transform:translateX(-50%);z-index:9996;min-width:300px;max-width:80vw;padding:5px 14px;border-radius:10px;background:rgba(10,15,29,0.92);border:1px solid #f59e0b;font-family:ui-monospace,monospace;font-size:11px;color:#fbbf24;font-weight:900;letter-spacing:0.5px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity 0.3s;pointer-events:none';
+    container.style.cssText='position:fixed;bottom:130px;left:50%;transform:translateX(-50%);z-index:9996;min-width:280px;max-width:70vw;padding:6px 16px;border-radius:10px;background:rgba(10,15,29,0.92);border:1px solid #f59e0b;font-family:ui-monospace,monospace;font-size:12px;color:#fbbf24;font-weight:900;letter-spacing:0.5px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:0;transition:opacity 0.4s;pointer-events:none';
     container.textContent='📻 ...';
     document.body.appendChild(container);
     /* Poll radio queue */
@@ -1499,7 +1500,7 @@ var Radio=(function(){
     var msg=arr[Math.floor(Math.random()*arr.length)];
     container.textContent=msg;
     container.style.animation='none';
-    clearTimeout(show._t);show._t=setTimeout(function(){container.textContent='📻 ...';},5500);
+    clearTimeout(show._t);show._t=setTimeout(function(){container.textContent='📻 ...';},6500);
   }
   return{mount:mount,show:show};
 })();
@@ -1554,5 +1555,26 @@ ready(function(){
     console.log('[ZNP] Mega Update Pack loaded');
   },1200);
 });
+})();
+</script>
+<script>
+/* ===== PATCH 1: XÓA THÀNH TỰU + NHIỆM VỤ HÔM NAY ===== */
+(function(){
+'use strict';
+function nukeUI(){
+  ['znp-ach-btn','znp-ach-modal','znp-quest-panel','znp-quest-list','znp-quest-h']
+    .forEach(function(id){
+      var el=document.getElementById(id);
+      if(el&&el.parentNode) el.parentNode.removeChild(el);
+    });
+  document.querySelectorAll('div').forEach(function(d){
+    var t=d.textContent;
+    if(t==='🎯 NHIỆM VỤ HÔM NAY' || t==='🏆 THÀNH TỰU') d.remove();
+  });
+}
+nukeUI();
+setInterval(nukeUI,300);
+window.__ACH_UNLOCK=function(){};
+console.log('[PATCH 1] Đã xóa Thành Tựu + Nhiệm Vụ Hôm Nay');
 })();
 </script>
