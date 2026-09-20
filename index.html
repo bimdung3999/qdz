@@ -1578,3 +1578,347 @@ window.__ACH_UNLOCK=function(){};
 console.log('[PATCH 1] Đã xóa Thành Tựu + Nhiệm Vụ Hôm Nay');
 })();
 </script>
+<script>
+/* =========================================================
+   UPDATE PACK v5 — Vehicle Upgrade (#15) + Mutation (#4)
+   ========================================================= */
+(function(){
+'use strict';
+
+/* ---------- HELPERS ---------- */
+function isPlaying(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs=document.querySelectorAll('h1');
+  for(var i=0;i<hs.length;i++) if(hs[i].textContent==='TỬ TRẬN') return false;
+  return true;
+}
+
+function toast(m,c,dur){
+  var t=document.createElement('div');
+  t.style.cssText='position:fixed;top:200px;left:50%;transform:translateX(-50%);z-index:10002;padding:11px 24px;border-radius:12px;background:rgba(10,15,29,0.96);border:2px solid '+(c||'#22d3ee')+';color:'+(c||'#a5f3fc')+';font-weight:900;font-size:14px;font-family:system-ui;box-shadow:0 0 24px '+(c||'#22d3ee')+'66;pointer-events:none;transition:opacity 0.5s,transform 0.3s;letter-spacing:0.5px';
+  t.textContent=m;document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(-20px)';},dur||1900);
+  setTimeout(function(){t.remove();},(dur||1900)+700);
+}
+if(!window.__znpToast) window.__znpToast=toast;
+
+/* ---------- INPUT ---------- */
+var keys={};
+window.addEventListener('keydown',function(e){keys[e.key.toLowerCase()]=true;},{passive:true});
+window.addEventListener('keyup',function(e){keys[e.key.toLowerCase()]=false;},{passive:true});
+window.addEventListener('blur',function(){keys={};});
+
+/* =========================================================
+   FEATURE 4 — MUTATION SYSTEM 🧬
+   ========================================================= */
+var MUTATIONS=[
+  {id:'regen',   name:'TÁI TẠO TẾ BÀO',    icon:'💚', color:'#22c55e',
+   desc:'+3 HP/giây vĩnh viễn, +20 Máu tối đa. Tự hồi máu không cần đứng yên.',
+   apply:function(f){f.perks.regen=(f.perks.regen||0)+3;f.maxHp+=20;f.hp=Math.min(f.maxHp,f.hp+20);}},
+  {id:'speed',   name:'TỐC ĐỘ ĐỘT BIẾN',   icon:'⚡', color:'#38bdf8',
+   desc:'+30% tốc độ chạy. Dash hồi -50% và bất tử lâu hơn.',
+   apply:function(f){f.baseSpeed*=1.30;f.perks.speed=(f.perks.speed||0)+0.3;f.perks.dashCharge=1;}},
+  {id:'neural',  name:'TRÍ NÃO CẢI TẠO',   icon:'🧠', color:'#a855f7',
+   desc:'+25% sát thương, +15% chí mạng, đạn tự xuyên giáp zombie.',
+   apply:function(f){f.perks.dmg=(f.perks.dmg||0)+0.25;f.perks.crit=(f.perks.crit||0)+0.15;f.perks.armorPierce=1;}},
+  {id:'vampire', name:'MA CÀ RỒNG',        icon:'🩸', color:'#dc2626',
+   desc:'Hút máu 15% mọi sát thương gây ra + 10% từ cận chiến.',
+   apply:function(f){f.perks.lifesteal=(f.perks.lifesteal||0)+0.15;f.perks.vamp=(f.perks.vamp||0)+0.10;}},
+  {id:'tank',    name:'SIÊU GIÁP',         icon:'🛡️', color:'#0ea5e9',
+   desc:'+100 Giáp tối đa, giáp tự hồi 8/giây, giảm 20% dmg nhận.',
+   apply:function(f){f.maxArmor=Math.min(300,(f.maxArmor||100)+100);f.armor=f.maxArmor;f.perks.shield=2;f.perks.armorRed=(f.perks.armorRed||0)+0.2;}},
+  {id:'berserk', name:'CUỒNG NỘ GEN',      icon:'😡', color:'#f97316',
+   desc:'+35% dmg khi HP dưới 50%. Càng nguy kịch càng mạnh.',
+   apply:function(f){f.perks.berserk=(f.perks.berserk||0)+0.35;f.perks.lifesteal=(f.perks.lifesteal||0)+0.05;}},
+  {id:'gold',    name:'XÚC XẮC VÀNG',      icon:'💰', color:'#facc15',
+   desc:'Zombie rơi vàng 3x. Scrap & Bio rơi x3.',
+   apply:function(f){f.perks.goldRush=(f.perks.goldRush||0)+3;f.perks.scav=1;}},
+  {id:'ghost',   name:'BÓNG MA',           icon:'👻', color:'#c4b5fd',
+   desc:'+0.5s bất tử sau Dash. Zombie trong 300px bị giảm 40% tốc.',
+   apply:function(f){f.perks.dash=1;f.perks.slowAura=(f.perks.slowAura||0)+1;f.invincible=Math.max(f.invincible,0.5);}}
+];
+
+var MutState={threshold:150, triggered:false, lastBio:0, btn:null};
+
+function resetMutIfNewRun(f){
+  if(f.bio<30 && MutState.lastBio>50){
+    MutState.triggered=false;
+  }
+  MutState.lastBio=f.bio;
+}
+
+function updateMutBtn(bio){
+  if(!MutState.btn) return;
+  if(MutState.triggered){
+    MutState.btn.style.borderColor='#22c55e';
+    MutState.btn.style.color='#86efac';
+    MutState.btn.style.background='linear-gradient(135deg,#15803d,#166534)';
+    MutState.btn.innerHTML='🧬 ĐỘT BIẾN ✓';
+  }else{
+    var pct=Math.min(100,(bio/MutState.threshold)*100);
+    MutState.btn.innerHTML='🧬 '+bio+'/'+MutState.threshold+' ('+Math.round(pct)+'%)';
+  }
+}
+
+function checkMutationTrigger(){
+  var Z=window.__ZNP;
+  if(!Z||!Z.player) return;
+  var f=Z.player;
+  resetMutIfNewRun(f);
+  updateMutBtn(f.bio);
+  if(MutState.triggered) return;
+  if(f.bio>=MutState.threshold){
+    MutState.triggered=true;
+    openMutModal();
+  }
+}
+
+function openMutModal(){
+  if(document.getElementById('znp-mut-modal')) return;
+  var pool=MUTATIONS.slice().sort(function(){return 0.5-Math.random();}).slice(0,3);
+  var m=document.createElement('div');
+  m.id='znp-mut-modal';
+  m.style.cssText='position:fixed;inset:0;z-index:10005;background:rgba(2,6,15,0.95);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui;backdrop-filter:blur(6px)';
+  var html='<div style="background:linear-gradient(135deg,#0d1527,#1a0e2e);border:2px solid #a855f7;border-radius:20px;padding:26px;max-width:820px;width:100%;box-shadow:0 0 60px rgba(168,85,247,0.65);animation:znpPop 0.4s ease-out">';
+  html+='<div style="text-align:center;margin-bottom:20px">';
+  html+='<div style="font-size:46px;filter:drop-shadow(0 0 14px #a855f7)">🧬</div>';
+  html+='<h2 style="color:#c4b5fd;font-weight:900;letter-spacing:3px;font-size:20px;margin:6px 0 0 0;text-shadow:0 0 20px rgba(168,85,247,0.8)">ĐỘT BIẾN GEN</h2>';
+  html+='<div style="color:#94a3b8;font-size:12px;margin-top:6px">Bio-sample đạt ngưỡng — Chọn <b style="color:#fbbf24">1 trong 3</b> đột biến (hiệu lực cả run này)</div>';
+  html+='</div>';
+  html+='<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px" id="znp-mut-grid">';
+  pool.forEach(function(mut){
+    html+='<button data-mut="'+mut.id+'" style="background:rgba(15,23,42,0.8);border:2px solid '+mut.color+';border-radius:14px;padding:18px 14px;cursor:pointer;text-align:left;font-family:system-ui;color:#fff;transition:all 0.2s;position:relative;overflow:hidden">';
+    html+='<div style="position:absolute;top:0;left:0;right:0;height:4px;background:'+mut.color+';box-shadow:0 0 12px '+mut.color+'"></div>';
+    html+='<div style="font-size:38px;margin-bottom:6px;filter:drop-shadow(0 0 10px '+mut.color+'88)">'+mut.icon+'</div>';
+    html+='<div style="color:'+mut.color+';font-weight:900;font-size:14px;letter-spacing:0.5px;margin-bottom:6px">'+mut.name+'</div>';
+    html+='<div style="color:#cbd5e1;font-size:11px;line-height:1.5">'+mut.desc+'</div>';
+    html+='</button>';
+  });
+  html+='</div>';
+  html+='<div style="text-align:center;color:#64748b;font-size:10px;margin-top:14px;letter-spacing:2px">⬢ MUTATION PROTOCOL v5 ⬢</div>';
+  html+='</div>';
+  m.innerHTML=html;
+  document.body.appendChild(m);
+  m.querySelectorAll('[data-mut]').forEach(function(b){
+    b.onmouseenter=function(){b.style.transform='translateY(-4px) scale(1.03)';b.style.boxShadow='0 10px 30px '+b.style.borderColor+'88';};
+    b.onmouseleave=function(){b.style.transform='none';b.style.boxShadow='none';};
+    b.onclick=function(){applyMutation(b.getAttribute('data-mut'),m);};
+  });
+}
+
+function applyMutation(id,modal){
+  var mut=MUTATIONS.filter(function(x){return x.id===id;})[0];
+  if(!mut) return;
+  var Z=window.__ZNP;
+  if(!Z||!Z.player) return;
+  var f=Z.player;
+  mut.apply(f);
+  f.bio=Math.max(0,f.bio-MutState.threshold);
+  try{ if(window.__RADIO_QUEUE) window.__RADIO_QUEUE.push('mutation_'+id); }catch(e){}
+  toast('🧬 '+mut.name+' đã kích hoạt!','#a855f7',2600);
+  if(modal) modal.remove();
+  updateMutBtn(f.bio);
+}
+
+function mountMutation(){
+  var b=document.createElement('div');
+  b.id='znp-mut-btn';
+  b.style.cssText='position:fixed;bottom:430px;right:20px;z-index:9998;background:linear-gradient(135deg,#a855f7,#6d28d9);color:#fff;border:2px solid #c4b5fd;border-radius:12px;padding:10px 16px;font-weight:900;font-size:13px;cursor:pointer;box-shadow:0 0 20px rgba(168,85,247,0.6);font-family:system-ui;transition:opacity 0.3s,transform 0.3s;white-space:nowrap';
+  b.textContent='🧬 0/'+MutState.threshold;
+  b.onclick=function(){
+    var Z=window.__ZNP;
+    if(MutState.triggered){toast('Bạn đã chọn đột biến cho run này!','#22c55e');return;}
+    if(Z&&Z.player&&Z.player.bio>=MutState.threshold) openMutModal();
+    else toast('Cần thêm '+(MutState.threshold-(Z&&Z.player?Z.player.bio:0))+' Bio nữa','#f87171');
+  };
+  document.body.appendChild(b);
+  MutState.btn=b;
+  var st=document.createElement('style');
+  st.textContent='@keyframes znpPop{from{transform:scale(0.85);opacity:0}to{transform:scale(1);opacity:1}}';
+  document.head.appendChild(st);
+  setInterval(checkMutationTrigger,400);
+}
+
+/* =========================================================
+   FEATURE 15 — VEHICLE UPGRADE 🚗
+   ========================================================= */
+var Veh={combo:0,comboT:0,lastKills:0,nitroFx:0,comboEl:null,totalComboXp:0};
+
+function spawnSmokeAt(x,y,color){
+  var p=document.createElement('div');
+  var sz=8+Math.random()*10;
+  p.style.cssText='position:fixed;left:'+x+'px;top:'+y+'px;width:'+sz+'px;height:'+sz+'px;border-radius:50%;background:'+(color||'#94a3b8')+';pointer-events:none;z-index:9994;opacity:0.75;box-shadow:0 0 12px '+(color||'#94a3b8')+';transition:transform 0.7s ease-out,opacity 0.7s;';
+  document.body.appendChild(p);
+  var dx=(Math.random()-0.5)*60, dy=(Math.random()-0.5)*60;
+  requestAnimationFrame(function(){
+    p.style.transform='translate('+dx+'px,'+dy+'px) scale(2.2)';
+    p.style.opacity='0';
+  });
+  setTimeout(function(){p.remove();},750);
+}
+
+function worldToScreen(wx,wy){
+  var Z=window.__ZNP; if(!Z||!Z.player) return{x:0,y:0};
+  var f=Z.player;
+  var W=window.visualViewport?window.visualViewport.width:window.innerWidth;
+  var H=window.visualViewport?window.visualViewport.height:window.innerHeight;
+  return{x:W/2+(wx-f.x), y:H/2+(wy-f.y)};
+}
+
+function showCombo(n){
+  if(!Veh.comboEl){
+    var e=document.createElement('div');
+    e.id='znp-combo';
+    e.style.cssText='position:fixed;top:45%;left:50%;transform:translate(-50%,-50%);z-index:10000;font-family:system-ui;font-weight:900;pointer-events:none;opacity:0;transition:opacity 0.35s,transform 0.4s';
+    document.body.appendChild(e);
+    Veh.comboEl=e;
+  }
+  var e=Veh.comboEl;
+  var color=n>=10?'#f43f5e':n>=5?'#fbbf24':'#22d3ee';
+  var sz=Math.min(64,28+n*3);
+  e.innerHTML='<div style="font-size:'+sz+'px;color:'+color+';text-shadow:0 0 20px '+color+',0 0 40px '+color+';letter-spacing:2px;text-align:center">COMBO x'+n+'</div><div style="font-size:14px;color:#fff;text-align:center;letter-spacing:3px;margin-top:-4px">ROADKILL!</div>';
+  e.style.opacity='1';
+  e.style.transform='translate(-50%,-50%) scale(1.1)';
+  clearTimeout(Veh._ct);
+  Veh._ct=setTimeout(function(){
+    e.style.opacity='0';
+    e.style.transform='translate(-50%,-70%) scale(0.9)';
+  },900);
+}
+
+function vehicleTick(){
+  var Z=window.__ZNP;
+  if(!Z||!Z.player) return;
+  var f=Z.player;
+  var stats=window.__STATS||{};
+  var now=Date.now();
+
+  /* Reset combo sau 3s không kill */
+  if(now-Veh.comboT>3000 && Veh.combo>0) Veh.combo=0;
+
+  /* Detect roadkill (kill trong khi lái xe) */
+  var ck=stats.totalKills||0;
+  if(ck>Veh.lastKills){
+    var diff=ck-Veh.lastKills;
+    if(f.inVehicle){
+      Veh.combo+=diff;
+      Veh.comboT=now;
+      var xp=15*diff*(1+Veh.combo*0.15);
+      f.xp+=xp;
+      Veh.totalComboXp+=xp;
+      while(f.xp>=f.xpToNext){
+        f.xp-=f.xpToNext;
+        f.level++;
+        f.xpToNext=Math.floor(f.xpToNext*1.35);
+      }
+      if(Veh.combo>=3) showCombo(Veh.combo);
+      if(Veh.combo>=5 && Math.random()<0.4) f.scrap+=5;
+    }
+    Veh.lastKills=ck;
+  }
+
+  /* NITRO: Shift khi đang lái xe */
+  if(f.inVehicle && keys.shift){
+    if(f.fuel>2){
+      var boost=8;
+      f.x+=Math.cos(f.angle)*boost;
+      f.y+=Math.sin(f.angle)*boost;
+      f.fuel-=0.4;
+      Veh.nitroFx++;
+      if(Veh.nitroFx%3===0){
+        var sc=worldToScreen(f.x-Math.cos(f.angle)*35,f.y-Math.sin(f.angle)*35);
+        spawnSmokeAt(sc.x,sc.y,Math.random()<0.5?'#38bdf8':'#a5f3fc');
+      }
+      if(Veh.nitroFx%2===0){
+        var sc2=worldToScreen(f.x-Math.cos(f.angle)*55,f.y-Math.sin(f.angle)*55);
+        spawnSmokeAt(sc2.x,sc2.y,'#fbbf24');
+      }
+    }else if(!f._noFuelWarn){
+      f._noFuelWarn=true;
+      toast('⚠️ Hết nhiên liệu — không thể NITRO','#f87171',1500);
+      setTimeout(function(){ if(window.__ZNP&&window.__ZNP.player) window.__ZNP.player._noFuelWarn=false; },3500);
+    }
+  }
+
+  /* DRIFT: Space + A/D khi đang lái xe */
+  if(f.inVehicle && keys.space && (keys.a||keys.d)){
+    var side=f.angle+(keys.a?Math.PI/2:-Math.PI/2);
+    var dist=6;
+    f.x+=Math.cos(side)*dist*(keys.a?1:-1);
+    f.y+=Math.sin(side)*dist*(keys.a?1:-1);
+    if(Math.random()<0.6){
+      var sc3=worldToScreen(f.x-Math.cos(f.angle)*30,f.y-Math.sin(f.angle)*30);
+      spawnSmokeAt(sc3.x,sc3.y,'#64748b');
+    }
+    if(!f._driftToast){
+      f._driftToast=true;
+      toast('🏎️ DRIFT! Nhấn SHIFT để NITRO','#38bdf8',1400);
+      setTimeout(function(){ if(window.__ZNP&&window.__ZNP.player) window.__ZNP.player._driftToast=false; },4500);
+    }
+  }
+
+  updateVehHud(f);
+}
+
+function updateVehHud(f){
+  var hud=document.getElementById('znp-veh-hud');
+  if(!f.inVehicle){
+    if(hud) hud.style.display='none';
+    return;
+  }
+  if(!hud){
+    hud=document.createElement('div');
+    hud.id='znp-veh-hud';
+    hud.style.cssText='position:fixed;top:280px;right:20px;z-index:9997;min-width:190px;background:rgba(10,15,29,0.94);border:2px solid #38bdf8;border-radius:12px;padding:10px 14px;font-family:system-ui;color:#fff;box-shadow:0 0 22px rgba(56,189,248,0.5);transition:opacity 0.3s';
+    document.body.appendChild(hud);
+  }
+  hud.style.display='block';
+  var v=f.inVehicle;
+  var hpPct=Math.max(0,Math.min(100,(v.hp||100)));
+  var fuelPct=Math.max(0,Math.min(100,(v.fuel||0)/(v.maxFuel||100)*100));
+  var vt=(v.vType||'sedan').toUpperCase();
+  hud.innerHTML=
+    '<div style="color:#67e8f9;font-weight:900;font-size:10px;letter-spacing:1.5px;margin-bottom:4px">🚗 '+vt+'</div>'+
+    '<div style="font-size:9px;color:#94a3b8;font-weight:900;margin-bottom:2px">HP</div>'+
+    '<div style="height:6px;background:#0f172a;border-radius:3px;overflow:hidden;margin-bottom:6px"><div style="height:100%;width:'+hpPct+'%;background:linear-gradient(90deg,#ef4444,#22c55e);transition:width 0.2s"></div></div>'+
+    '<div style="font-size:9px;color:#94a3b8;font-weight:900;margin-bottom:2px">FUEL</div>'+
+    '<div style="height:6px;background:#0f172a;border-radius:3px;overflow:hidden"><div style="height:100%;width:'+fuelPct+'%;background:linear-gradient(90deg,#fbbf24,#f97316);transition:width 0.2s"></div></div>'+
+    '<div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap;font-size:9px;font-weight:900">'+
+    '<span style="padding:3px 7px;border-radius:5px;background:rgba(56,189,248,0.2);border:1px solid #38bdf8;color:#a5f3fc">SHIFT=NITRO</span>'+
+    '<span style="padding:3px 7px;border-radius:5px;background:rgba(148,163,184,0.2);border:1px solid #94a3b8;color:#cbd5e1">SPACE=DRIFT</span>'+
+    '</div>'+
+    (Veh.combo>0?'<div style="margin-top:6px;color:#fbbf24;font-weight:900;font-size:12px;text-align:center;text-shadow:0 0 10px #fbbf24">🔥 COMBO x'+Veh.combo+'</div>':'');
+}
+
+/* =========================================================
+   VISIBILITY TOGGLE
+   ========================================================= */
+var _lastPlay=null;
+function updateVisibility(){
+  var p=isPlaying();
+  if(p!==_lastPlay){
+    _lastPlay=p;
+    ['znp-mut-btn','znp-veh-hud'].forEach(function(id){
+      var e=document.getElementById(id);
+      if(!e) return;
+      e.style.opacity=p?'1':'0';
+      e.style.pointerEvents=p?'auto':'none';
+    });
+  }
+}
+setInterval(updateVisibility,400);
+
+/* =========================================================
+   MOUNT
+   ========================================================= */
+function ready(cb){var r=document.getElementById('root');if(r&&r.children.length>0)return cb();setTimeout(function(){ready(cb)},300);}
+ready(function(){
+  setTimeout(function(){
+    mountMutation();
+    setInterval(vehicleTick,16);   /* ~60fps */
+    setTimeout(updateVisibility,200);
+    console.log('[ZNP v5] 🧬 Mutation + 🚗 Vehicle Upgrade loaded');
+  },1400);
+});
+})();
+</script>
