@@ -2340,3 +2340,974 @@ if(!document.getElementById('znp-viewport-meta')){
 console.log('[ZNP] 🎮 Platform + 🗑️ Clear Data pack loaded');
 })();
 </script>
+<script>
+/* =========================================================
+   📱 MOBILE HUD COMPACT — Thu nhỏ HUD cho điện thoại
+   Tự động nhận diện + toggle bật/tắt
+   ========================================================= */
+(function(){
+'use strict';
+
+/* ---------- 1. NHẬN DIỆN ĐIỆN THOẠI ---------- */
+function isPhone(){
+  var ua = navigator.userAgent || '';
+  if(/Android|iPhone|iPod|Mobile|BlackBerry|IEMobile|Opera Mini/i.test(ua)) return true;
+  if(/iPad|Tablet/i.test(ua)) return false; /* tablet không tính */
+  /* Fallback: màn hình nhỏ + có cảm ứng */
+  if(window.innerWidth <= 900 && ('ontouchstart' in window || navigator.maxTouchPoints > 0)) return true;
+  return false;
+}
+
+if(!isPhone()){
+  console.log('[MOBILE HUD] Không phải điện thoại — bỏ qua');
+  return;
+}
+
+console.log('[MOBILE HUD] Đã phát hiện điện thoại — áp dụng HUD compact');
+
+/* ---------- 2. PREFERENCE + MỨC ĐỘ THU NHỎ ---------- */
+var KEY = 'znp_mobile_compact';
+var saved = localStorage.getItem(KEY);
+var compact = (saved === null) ? true : (saved === '1');
+
+/* Màn hình siêu nhỏ (< 400px) → thu nhỏ hơn nữa */
+var tiny = window.innerWidth <= 400;
+
+/* ---------- 3. CSS THU NHỎ ---------- */
+var st = document.createElement('style');
+st.id = 'znp-mobile-hud-css';
+st.textContent = `
+  /* ==== VITALS (góc trái trên) ==== */
+  body.znp-compact #vitals-hud {
+    transform: scale(${tiny ? 0.52 : 0.62}) !important;
+    transform-origin: top left !important;
+    opacity: 0.88 !important;
+  }
+  body.znp-compact #vitals-hud:hover { opacity: 1 !important; }
+
+  /* ==== QUICK-BAR (top, nhiều nút) ==== */
+  body.znp-compact #quick-bar {
+    transform: scale(${tiny ? 0.48 : 0.58}) !important;
+    transform-origin: top left !important;
+    max-width: 88vw !important;
+    opacity: 0.82 !important;
+  }
+  body.znp-compact #quick-bar:hover { opacity: 1 !important; }
+
+  /* ==== MINIMAP (góc phải trên) ==== */
+  body.znp-compact #minimap-card {
+    transform: scale(${tiny ? 0.52 : 0.62}) !important;
+    transform-origin: top right !important;
+    opacity: 0.88 !important;
+  }
+  body.znp-compact #minimap-card:hover { opacity: 1 !important; }
+
+  /* ==== CLOCK (phải, dưới minimap) ==== */
+  body.znp-compact #clock-hud {
+    transform: scale(${tiny ? 0.55 : 0.68}) !important;
+    transform-origin: top right !important;
+    opacity: 0.88 !important;
+  }
+
+  /* ==== WEAPON DOCK (dưới cùng) ==== */
+  body.znp-compact #weapon-dock {
+    transform: scale(${tiny ? 0.55 : 0.68}) !important;
+    transform-origin: bottom center !important;
+    opacity: 0.88 !important;
+    max-width: 90vw !important;
+  }
+  body.znp-compact #weapon-dock:hover { opacity: 1 !important; }
+
+  /* ==== JOYSTICK (2 cần điều khiển) ==== */
+  body.znp-compact #move-zone,
+  body.znp-compact #aim-zone {
+    width: ${tiny ? 68 : 78}px !important;
+    height: ${tiny ? 68 : 78}px !important;
+    opacity: 0.5 !important;
+    border-width: 1.5px !important;
+  }
+  body.znp-compact #move-zone:active,
+  body.znp-compact #aim-zone:active {
+    opacity: 0.85 !important;
+  }
+  body.znp-compact #move-thumb,
+  body.znp-compact #aim-thumb {
+    width: ${tiny ? 28 : 32}px !important;
+    height: ${tiny ? 28 : 32}px !important;
+  }
+  body.znp-compact #aim-thumb {
+    font-size: 11px !important;
+  }
+
+  /* ==== ẨN HANDLE KÉO (đỡ rối) ==== */
+  body.znp-compact .drag-handle {
+    display: none !important;
+  }
+
+  /* ==== Boss HP bar ==== */
+  body.znp-compact #vitals-hud ~ * > [class*="TITAN"],
+  body.znp-compact .hud-glass {
+    backdrop-filter: blur(3px) !important;
+  }
+
+  /* ==== Toast/Message nhỏ hơn ==== */
+  body.znp-compact #znp-radio {
+    font-size: 10.5px !important;
+    padding: 4px 10px !important;
+    bottom: 100px !important;
+  }
+
+  /* ==== Các nút mobile update pack ==== */
+  body.znp-compact #znp-mut-btn,
+  body.znp-compact #znp-class-btn,
+  body.znp-compact #znp-mods-btn,
+  body.znp-compact #znp-inv-btn,
+  body.znp-compact #znp-codex-btn {
+    transform: scale(0.75) !important;
+    transform-origin: bottom right !important;
+    padding: 7px 12px !important;
+    font-size: 11px !important;
+  }
+`;
+document.head.appendChild(st);
+
+/* ---------- 4. HÀM ÁP DỤNG ---------- */
+function apply(){
+  if(compact) document.body.classList.add('znp-compact');
+  else document.body.classList.remove('znp-compact');
+}
+apply();
+
+/* ---------- 5. NÚT TOGGLE ---------- */
+var btn = document.createElement('div');
+btn.id = 'znp-mobile-hud-btn';
+btn.style.cssText = 'position:fixed;bottom:10px;left:10px;z-index:99999;background:rgba(10,15,29,0.92);color:#67e8f9;border:2px solid #22d3ee;border-radius:10px;padding:6px 10px;font-family:system-ui;font-weight:900;font-size:11px;cursor:pointer;user-select:none;-webkit-user-select:none;box-shadow:0 0 14px rgba(34,211,238,0.55);letter-spacing:0.5px;transition:transform 0.15s,opacity 0.3s;touch-action:none;';
+btn.textContent = compact ? '📱 HUD NHỎ' : '📱 HUD TO';
+btn.onmouseenter = function(){ btn.style.transform = 'scale(1.06)'; };
+btn.onmouseleave = function(){ btn.style.transform = 'scale(1)'; };
+btn.onclick = function(){
+  compact = !compact;
+  try{ localStorage.setItem(KEY, compact ? '1' : '0'); }catch(e){}
+  apply();
+  btn.textContent = compact ? '📱 HUD NHỎ' : '📱 HUD TO';
+  if(window.__znpToast) window.__znpToast(
+    compact ? '📱 HUD thu nhỏ — dễ quan sát' : '📱 HUD bình thường',
+    '#22d3ee', 1200
+  );
+};
+
+/* ---------- 6. XỬ LÝ XOAY MÀN HÌNH ---------- */
+window.addEventListener('resize', function(){
+  var t = window.innerWidth <= 400;
+  if(t !== tiny){
+    /* Cập nhật lại CSS khi xoay máy */
+    tiny = t;
+    document.getElementById('znp-mobile-hud-css').textContent = st.textContent
+      .replace(/scale\(0\.52\)/g, t ? 'scale(0.52)' : 'scale(0.62)');
+  }
+});
+
+/* ---------- 7. MOUNT NÚT KHI GAME LOAD XONG ---------- */
+function ready(cb){
+  if(document.getElementById('vitals-hud')) return cb();
+  setTimeout(function(){ ready(cb); }, 400);
+}
+ready(function(){
+  document.body.appendChild(btn);
+  /* Ẩn nút khi ở menu chính (chưa vào game) */
+  var lastP = null;
+  setInterval(function(){
+    var playing = !!document.getElementById('vitals-hud') &&
+                  !Array.from(document.querySelectorAll('h1')).some(function(h){ return h.textContent==='TỬ TRẬN'; });
+    if(playing !== lastP){
+      lastP = playing;
+      btn.style.opacity = playing ? '1' : '0';
+      btn.style.pointerEvents = playing ? 'auto' : 'none';
+    }
+  }, 500);
+  console.log('[MOBILE HUD] Nút toggle đã sẵn sàng');
+});
+
+/* ---------- 8. TỰ ĐỘNG RE-APPLY NẾU BỊ RESET ---------- */
+setInterval(function(){
+  if(compact && !document.body.classList.contains('znp-compact')) apply();
+}, 1000);
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎁 FIX PACK — 🕳️ Bunker Dễ Thấy + Súng Bắn Liên Tục
+   ========================================================= */
+(function(){
+'use strict';
+
+function isPlaying(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs=document.querySelectorAll('h1');
+  for(var i=0;i<hs.length;i++) if(hs[i].textContent==='TỬ TRẬN') return false;
+  return true;
+}
+function toast(m,c,dur){
+  var t=document.createElement('div');
+  t.style.cssText='position:fixed;top:200px;left:50%;transform:translateX(-50%);z-index:10005;padding:11px 24px;border-radius:12px;background:rgba(10,15,29,0.96);border:2px solid '+(c||'#22d3ee')+';color:'+(c||'#a5f3fc')+';font-weight:900;font-size:14px;font-family:system-ui;box-shadow:0 0 24px '+(c||'#22d3ee')+'66;pointer-events:none;transition:opacity 0.5s,transform 0.3s;letter-spacing:0.5px;white-space:nowrap';
+  t.textContent=m;document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';t.style.transform='translateX(-50%) translateY(-20px)';},dur||1900);
+  setTimeout(function(){t.remove();},(dur||1900)+700);
+}
+if(!window.__znpToast) window.__znpToast=toast;
+
+/* =========================================================
+   🎵 DYNAMIC SOUNDTRACK
+   ========================================================= */
+var Music = (function(){
+  var ctx=null, masterGain=null, layers={}, currentLayer='none';
+  var initialized=false, beatInterval=null;
+
+  function init(){
+    if(initialized) return true;
+    try{
+      var AC=window.AudioContext||window.webkitAudioContext;
+      if(!AC) return false;
+      ctx = (window.__m && window.__m.ctx) ? window.__m.ctx : new AC();
+      masterGain=ctx.createGain();
+      masterGain.gain.value=0.0001;
+      var comp=ctx.createDynamicsCompressor();
+      comp.threshold.value=-22; comp.ratio.value=5;
+      masterGain.connect(comp); comp.connect(ctx.destination);
+      initialized=true;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  function clearLayers(dur){
+    Object.keys(layers).forEach(function(k){
+      var L=layers[k];
+      try{
+        if(L.gain){
+          L.gain.gain.cancelScheduledValues(ctx.currentTime);
+          L.gain.gain.setValueAtTime(L.gain.gain.value, ctx.currentTime);
+          L.gain.gain.linearRampToValueAtTime(0.0001, ctx.currentTime+(dur||0.6));
+        }
+        if(L.osc) L.osc.stop(ctx.currentTime+(dur||0.6)+0.1);
+        if(L.lfo) L.lfo.stop(ctx.currentTime+(dur||0.6)+0.1);
+      }catch(e){}
+      delete layers[k];
+    });
+    if(beatInterval){ clearInterval(beatInterval); beatInterval=null; }
+  }
+
+  function drone(name, freq, type, vol){
+    if(layers[name]) return;
+    var osc=ctx.createOscillator();
+    var gain=ctx.createGain();
+    var lp=ctx.createBiquadFilter();
+    var lfo=ctx.createOscillator();
+    var lfoG=ctx.createGain();
+    osc.type=type||'sawtooth';
+    osc.frequency.value=freq;
+    lp.type='lowpass';
+    lp.frequency.value=type==='sine'?700:500;
+    lp.Q.value=6;
+    lfo.frequency.value=0.13;
+    lfoG.gain.value=0.03;
+    lfo.connect(lfoG); lfoG.connect(gain.gain);
+    gain.gain.value=0.0001;
+    gain.gain.linearRampToValueAtTime(vol||0.08, ctx.currentTime+1.5);
+    osc.connect(lp); lp.connect(gain); gain.connect(masterGain);
+    osc.start(); lfo.start();
+    layers[name]={osc:osc,gain:gain,lfo:lfo};
+  }
+
+  function makeHeartbeat(){
+    if(layers.heartbeat) return;
+    var g=ctx.createGain(); g.gain.value=0.35; g.connect(masterGain);
+    layers.heartbeat={gain:g};
+    var beat=function(){
+      if(!layers.heartbeat||!ctx) return;
+      var t=ctx.currentTime;
+      [[0,60,0.5],[0.32,55,0.38]].forEach(function(p){
+        var o=ctx.createOscillator(), env=ctx.createGain();
+        o.frequency.setValueAtTime(p[1],t+p[0]);
+        o.frequency.exponentialRampToValueAtTime(p[1]*0.5,t+p[0]+0.15);
+        env.gain.setValueAtTime(0.0001,t+p[0]);
+        env.gain.linearRampToValueAtTime(p[2],t+p[0]+0.015);
+        env.gain.exponentialRampToValueAtTime(0.0001,t+p[0]+0.32);
+        o.connect(env); env.connect(g);
+        o.start(t+p[0]); o.stop(t+p[0]+0.4);
+      });
+    };
+    beatInterval=setInterval(beat,800);
+    beat();
+  }
+
+  function setIntensity(level){
+    if(!init()) return;
+    if(level===currentLayer) return;
+    clearLayers(level==='boss'||level==='lowhp'?0.3:0.9);
+
+    if(level==='calm'){
+      drone('a',110,'sine',0.055); drone('b',165,'sine',0.035); drone('c',220,'triangle',0.025);
+    } else if(level==='tense'){
+      drone('a',98,'triangle',0.07); drone('b',147,'triangle',0.045);
+      drone('c',220,'sawtooth',0.03); drone('d',294,'sine',0.02);
+    } else if(level==='battle'){
+      drone('a',82.4,'sawtooth',0.09); drone('b',123.5,'sawtooth',0.06);
+      drone('c',164.8,'triangle',0.05); drone('d',220,'sawtooth',0.035);
+    } else if(level==='boss'){
+      drone('a',55,'sawtooth',0.13); drone('b',82.4,'sawtooth',0.09);
+      drone('c',110,'square',0.055); drone('d',164.8,'sawtooth',0.045);
+      drone('e',220,'square',0.03);
+    } else if(level==='lowhp'){
+      drone('a',65.4,'sawtooth',0.07); drone('b',98,'triangle',0.05);
+      drone('c',130.8,'sine',0.03);
+      makeHeartbeat();
+    }
+    currentLayer=level;
+  }
+
+  function tick(){
+    if(!init()) return;
+    if(!window.__m || window.__m.mode===0){
+      if(masterGain) masterGain.gain.value=0.0001;
+      if(currentLayer!=='none'){ clearLayers(0.4); currentLayer='none'; }
+      return;
+    }
+    if(masterGain && masterGain.gain.value < 0.05){
+      masterGain.gain.linearRampToValueAtTime(0.85, ctx.currentTime+0.8);
+    }
+    var Z=window.__ZNP;
+    if(!Z||!Z.player||!Z.state) return;
+    var f=Z.player, H=Z.state;
+    var level='calm';
+    if(f.hp < f.maxHp*0.25) level='lowhp';
+    else if(H.activeBoss && H.activeBoss.hp>0) level='boss';
+    else if(window.__ZNP_BUNKER_ACTIVE) level='battle';
+    else if(H.time>=19||H.time<5) level='tense';
+    setIntensity(level);
+  }
+
+  return { init:init, tick:tick, stop:function(){ clearLayers(1); if(masterGain) masterGain.gain.value=0.0001; } };
+})();
+
+/* =========================================================
+   🕳️ UNDERGROUND BUNKER v2 — Dễ thấy + Auto-fire
+   ========================================================= */
+var Bunker = (function(){
+  var mode='idle';
+  var canvas=null, ctx=null, prompt=null, marker=null, arrow=null, intro=null, beaconEl=null;
+  var hatch=null;
+  var player={x:0,y:0,hp:100,maxHp:100,angle:0};
+  var bullets=[], zombies=[], loots=[], particles=[];
+  var W=0, H=0, lastTime=0, timer=0, wave=0, bossSpawned=false;
+  var dmgCd=0, killCount=0, nextEnterGuard=0;
+  var keys={}, mouse={x:0,y:0};
+  var firing=false;               // ← giữ chuột/tay = true
+  var shootCd=0;                  // countdown cho auto-fire
+  var savedPos=null, savedHp=null, savedInvincible=null;
+  var exitReadyAt=0;
+
+  var ZTYPE={
+    blind:  {hp:80,  speed:1.3, dmg:15, color:'#94a3b8', r:15},
+    crawler:{hp:45,  speed:2.9, dmg:10, color:'#a16207', r:11},
+    digger: {hp:160, speed:0.8, dmg:24, color:'#78350f', r:19},
+    spitter:{hp:100, speed:1.5, dmg:8,  color:'#a855f7', r:15},
+    queen:  {hp:3000,speed:1.0, dmg:35, color:'#ec4899', r:44}
+  };
+
+  // Fire rate (ms) cho từng súng
+  var WDELAY={knife:240,pistol:190,smg:70,shotgun:680,rifle:105,sniper:1050,
+              rpg:1250,flamethrower:35,minigun:45,railgun:900,plasma:180};
+  var WDMG={knife:95,pistol:36,smg:24,shotgun:26,rifle:38,sniper:260,
+            rpg:320,flamethrower:9,minigun:17,railgun:190,plasma:58};
+
+  function mount(){
+    spawnHatch();
+    setInterval(checkHatch, 150);
+    setInterval(function(){ if(mode==='inside') step(performance.now()); }, 16);
+    window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', function(){ keys={}; firing=false; });
+  }
+
+  function onKeyDown(e){
+    keys[e.key.toLowerCase()]=true;
+    if(mode==='inside'){
+      if(e.key==='Escape' || (e.key.toLowerCase()==='b' && Date.now()>exitReadyAt)){
+        e.preventDefault(); e.stopPropagation(); exitBunker(false); return;
+      }
+      if(['w','a','s','d','e','q','t','g','h','r','1','2','3','4','5','6','7','8','9','0'].indexOf(e.key.toLowerCase())>=0){
+        e.stopPropagation();
+      }
+    }
+    if(e.key.toLowerCase()==='b' && mode==='idle' && hatch && Date.now()>nextEnterGuard){
+      var Z=window.__ZNP;
+      if(Z&&Z.player){
+        var d=Math.hypot(Z.player.x-hatch.x, Z.player.y-hatch.y);
+        if(d<180){ e.preventDefault(); e.stopPropagation(); enterBunker(); }
+      }
+    }
+  }
+  function onKeyUp(e){ keys[e.key.toLowerCase()]=false; }
+
+  /* ============ SPAWN GẦN HƠN + BEACON SÁNG ============ */
+  function spawnHatch(){
+    var Z=window.__ZNP;
+    if(!Z||!Z.player) return;
+    // ★ Gần hơn nhiều: 380-650px
+    var a=Math.random()*Math.PI*2, d=380+Math.random()*270;
+    hatch={ x:Z.player.x+Math.cos(a)*d, y:Z.player.y+Math.sin(a)*d, pulse:0 };
+    toast('🕳️ HẦM NGẦM xuất hiện gần đây! Đi theo mũi tên tím → nhấn [B]','#a855f7',3500);
+    if(window.__RADIO_QUEUE) window.__RADIO_QUEUE.push('bunker_found');
+
+    if(!prompt){
+      prompt=document.createElement('div');
+      prompt.id='znp-bunker-prompt';
+      prompt.style.cssText='position:fixed;bottom:200px;left:50%;transform:translateX(-50%);z-index:9996;background:rgba(10,15,29,0.95);border:3px solid #a855f7;border-radius:14px;padding:14px 26px;font-family:system-ui;font-weight:900;font-size:16px;color:#c4b5fd;box-shadow:0 0 32px rgba(168,85,247,0.9);pointer-events:none;opacity:0;transition:opacity 0.3s;letter-spacing:1.5px;text-align:center';
+      prompt.innerHTML='🕳️ <b style="color:#fff">[B]</b> XUỐNG HẦM NGẦM<br><span style="font-size:11px;color:#94a3b8;font-weight:700">Loot hiếm · Queen Spitter · Auto-fire</span>';
+      document.body.appendChild(prompt);
+    }
+
+    // ★ BEACON cột sáng cố định tại vị trí hầm (nếu chưa có)
+    if(!beaconEl){
+      beaconEl=document.createElement('div');
+      beaconEl.id='znp-bunker-beacon';
+      beaconEl.style.cssText='position:fixed;z-index:9992;pointer-events:none;width:80px;height:80px;transform:translate(-50%,-50%);transition:opacity 0.3s';
+      beaconEl.innerHTML=
+        '<div style="position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,0.95) 0%,rgba(168,85,247,0.45) 45%,transparent 75%);animation:znpBeaconPulse 1.2s ease-in-out infinite"></div>'+
+        '<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:48px;filter:drop-shadow(0 0 18px #a855f7) drop-shadow(0 0 32px #c4b5fd)">🕳️</div>'+
+        '<div style="position:absolute;left:50%;bottom:-26px;transform:translateX(-50%);color:#c4b5fd;font-family:system-ui;font-weight:900;font-size:11px;letter-spacing:1.5px;white-space:nowrap;text-shadow:0 0 10px #a855f7">HẦM NGẦM</div>';
+      document.body.appendChild(beaconEl);
+      if(!document.getElementById('znp-beacon-kf')){
+        var s=document.createElement('style'); s.id='znp-beacon-kf';
+        s.textContent=
+          '@keyframes znpBeaconPulse{0%,100%{transform:scale(1);opacity:0.9}50%{transform:scale(1.35);opacity:0.45}}'+
+          '@keyframes znpArrow{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.18)}}';
+        document.head.appendChild(s);
+      }
+    }
+
+    // ★ ARROW chỉ hướng khi ở xa (screen edge indicator)
+    if(!arrow){
+      arrow=document.createElement('div');
+      arrow.id='znp-bunker-arrow';
+      arrow.style.cssText='position:fixed;z-index:9993;pointer-events:none;width:70px;height:70px;transition:opacity 0.3s';
+      arrow.innerHTML=
+        '<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:34px;color:#c4b5fd;filter:drop-shadow(0 0 12px #a855f7);animation:znpArrow 1s ease-in-out infinite">➤</div>'+
+        '<div id="znp-arrow-dist" style="position:absolute;left:50%;top:100%;transform:translateX(-50%);color:#a855f7;font-family:system-ui;font-weight:900;font-size:10px;white-space:nowrap;text-shadow:0 0 8px #a855f7"></div>';
+      document.body.appendChild(arrow);
+    }
+  }
+
+  /* ============ CHECK HATCH (hiển thị beacon + arrow + prompt) ============ */
+  function checkHatch(){
+    var Z=window.__ZNP;
+    if(!Z||!Z.player||mode!=='idle'||!hatch) {
+      if(beaconEl) beaconEl.style.opacity='0';
+      if(arrow) arrow.style.opacity='0';
+      if(prompt) prompt.style.opacity='0';
+      return;
+    }
+    var d=Math.hypot(Z.player.x-hatch.x, Z.player.y-hatch.y);
+
+    // Prompt khi gần (400px)
+    if(prompt) prompt.style.opacity = d<400?'1':'0';
+
+    var sc=worldToScreen(hatch.x, hatch.y);
+    var vw=window.innerWidth, vh=window.innerHeight;
+    var onScreen = sc.x>-50 && sc.x<vw+50 && sc.y>-50 && sc.y<vh+50;
+
+    // Beacon: hiện khi trên màn hình
+    if(beaconEl){
+      if(onScreen){
+        beaconEl.style.left=sc.x+'px';
+        beaconEl.style.top=sc.y+'px';
+        beaconEl.style.opacity='1';
+      } else {
+        beaconEl.style.opacity='0';
+      }
+    }
+
+    // Arrow: hiện khi ngoài màn hình → chỉ hướng
+    if(arrow){
+      if(!onScreen && d<3000){
+        var cx=vw/2, cy=vh/2;
+        var ang=Math.atan2(sc.y-cy, sc.x-cx);
+        var pad=60;
+        var ax=cx+Math.cos(ang)*(Math.min(vw,vh)/2-pad);
+        var ay=cy+Math.sin(ang)*(Math.min(vw,vh)/2-pad);
+        arrow.style.left=(ax-35)+'px';
+        arrow.style.top=(ay-35)+'px';
+        arrow.style.opacity='1';
+        var ar=arrow.firstChild;
+        ar.style.transform='rotate('+(ang*180/Math.PI+90)+'deg)';
+        var dist=document.getElementById('znp-arrow-dist');
+        if(dist) dist.textContent=Math.round(d)+'m';
+      } else {
+        arrow.style.opacity='0';
+      }
+    }
+  }
+
+  function worldToScreen(wx,wy){
+    var Z=window.__ZNP;
+    if(!Z||!Z.player) return {x:0,y:0};
+    return { x:window.innerWidth/2+(wx-Z.player.x), y:window.innerHeight/2+(wy-Z.player.y) };
+  }
+
+  /* ============ ENTER / EXIT ============ */
+  function enterBunker(){
+    if(mode!=='idle') return;
+    mode='inside';
+    var Z=window.__ZNP;
+    if(Z&&Z.player){
+      savedPos={x:Z.player.x, y:Z.player.y};
+      savedHp=Z.player.hp;
+      savedInvincible=Z.player.invincible||0;
+      Z.player.x+=1000000; Z.player.y+=1000000;
+      Z.player.invincible=99999;
+    }
+    window.__ZNP_BUNKER_ACTIVE = true;
+
+    if(!canvas){
+      canvas=document.createElement('canvas');
+      canvas.id='znp-bunker-canvas';
+      canvas.style.cssText='position:fixed;inset:0;z-index:9993;display:block;background:#050510;transition:opacity 0.5s;opacity:0';
+      document.body.appendChild(canvas);
+      ctx=canvas.getContext('2d');
+      window.addEventListener('resize', resizeCanvas);
+
+      // ★ MOUSE: track trạng thái giữ chuột
+      canvas.addEventListener('mousedown', function(e){ if(e.button===0){ firing=true; mouse.x=e.clientX; mouse.y=e.clientY; } });
+      window.addEventListener('mouseup', function(e){ if(e.button===0) firing=false; });
+      canvas.addEventListener('mousemove', function(e){ mouse.x=e.clientX; mouse.y=e.clientY; });
+      canvas.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+
+      // ★ TOUCH: track trạng thái giữ tay
+      canvas.addEventListener('touchstart', function(e){
+        if(mode!=='inside') return;
+        e.preventDefault();
+        var t=e.touches[0]; mouse.x=t.clientX; mouse.y=t.clientY;
+        firing=true;
+      }, {passive:false});
+      canvas.addEventListener('touchmove', function(e){
+        if(mode!=='inside') return;
+        e.preventDefault();
+        var t=e.touches[0]; mouse.x=t.clientX; mouse.y=t.clientY;
+      }, {passive:false});
+      canvas.addEventListener('touchend', function(e){ if(e.touches.length===0) firing=false; });
+      canvas.addEventListener('touchcancel', function(){ firing=false; });
+    }
+    canvas.style.display='block';
+    resizeCanvas();
+
+    ['vitals-hud','quick-bar','minimap-card','clock-hud','weapon-dock','move-zone','aim-zone'].forEach(function(id){
+      var e=document.getElementById(id);
+      if(e){ e.dataset.znpHidden='1'; e.style.opacity='0'; e.style.pointerEvents='none'; }
+    });
+
+    player.x=W/2; player.y=H/2; player.hp=100; player.maxHp=100; player.angle=0;
+    bullets=[]; zombies=[]; loots=[]; particles=[];
+    wave=0; bossSpawned=false; timer=0; dmgCd=0; killCount=0;
+    shootCd=0; firing=false;
+    exitReadyAt=Date.now()+1500;
+
+    for(var i=0;i<8;i++) spawnZombie();
+    for(var i=0;i<5;i++) spawnLoot();
+
+    requestAnimationFrame(function(){ canvas.style.opacity='1'; });
+
+    if(!intro){
+      intro=document.createElement('div');
+      intro.id='znp-bunker-intro';
+      intro.style.cssText='position:fixed;inset:0;z-index:9998;display:flex;align-items:center;justify-content:center;pointer-events:none;transition:opacity 1.6s;opacity:1;font-family:system-ui';
+      document.body.appendChild(intro);
+    }
+    intro.innerHTML='<div style="text-align:center"><div style="font-size:72px;filter:drop-shadow(0 0 24px #a855f7);animation:znpBeaconPulse 1.6s infinite">🕳️</div><div style="color:#c4b5fd;font-weight:900;letter-spacing:6px;font-size:24px;margin-top:8px;text-shadow:0 0 24px #a855f7">SECTOR 7 · HẦM NGẦM</div><div style="color:#94a3b8;font-size:12px;letter-spacing:3px;margin-top:6px">GIỮ CHUỘT / GIỮ TAY ĐỂ BẮN LIÊN TỤC</div></div>';
+    intro.style.opacity='1';
+    setTimeout(function(){ intro.style.opacity='0'; }, 2400);
+
+    lastTime=performance.now();
+    toast('🕳️ Đã vào hầm — Giữ chuột/tay để bắn liên tục!','#a855f7',3500);
+    if(window.__RADIO_QUEUE) window.__RADIO_QUEUE.push('bunker_enter');
+  }
+
+  function resizeCanvas(){
+    if(!canvas) return;
+    canvas.width=window.innerWidth;
+    canvas.height=window.innerHeight;
+    W=canvas.width; H=canvas.height;
+  }
+
+  /* ============ AUTO-FIRE ============ */
+  function tryShoot(){
+    if(!firing) return;
+    if(shootCd>0) return;
+    var Z=window.__ZNP;
+    var w=(Z&&Z.player&&Z.player.weapon)||'pistol';
+    var delay=WDELAY[w]||190;
+    var dmg=(WDMG[w]||30)*(1+((Z&&Z.player&&Z.player.perks&&Z.player.perks.dmg)||0));
+
+    var dx=mouse.x-player.x, dy=mouse.y-player.y;
+    var d=Math.hypot(dx,dy)||1;
+    var baseAng=Math.atan2(dy,dx);
+
+    // Shotgun/Minigun bắn nhiều viên
+    var pellets = w==='shotgun'?8 : w==='flamethrower'?4 : 1;
+    var spread = w==='shotgun'?0.24 : w==='flamethrower'?0.35 : w==='smg'?0.09 : w==='minigun'?0.13 : 0.02;
+
+    for(var p=0;p<pellets;p++){
+      var ang=baseAng+(Math.random()-0.5)*spread;
+      var speed=w==='sniper'||w==='railgun'?20 : w==='rpg'?12 : w==='flamethrower'?9 : 15;
+      bullets.push({
+        x:player.x, y:player.y,
+        vx:Math.cos(ang)*speed, vy:Math.sin(ang)*speed,
+        dmg:dmg/pellets, life:1.6, trail:[],
+        pierce: w==='sniper'?5 : w==='railgun'?12 : 1,
+        big: w==='sniper'||w==='rpg'||w==='railgun'
+      });
+    }
+
+    // Muzzle flash
+    var mf=w==='sniper'||w==='rpg'?14:8;
+    for(var i=0;i<mf;i++){
+      particles.push({
+        x:player.x+Math.cos(baseAng)*18, y:player.y+Math.sin(baseAng)*18,
+        vx:Math.cos(baseAng+(Math.random()-0.5)*0.9)*(2+Math.random()*3),
+        vy:Math.sin(baseAng+(Math.random()-0.5)*0.9)*(2+Math.random()*3),
+        life:0.22, maxLife:0.22, color:'#fbbf24', size:3
+      });
+    }
+    // Recoil
+    player.x-=Math.cos(baseAng)*2; player.y-=Math.sin(baseAng)*2;
+    shootCd=delay;
+  }
+
+  function spawnZombie(){
+    var edge=Math.floor(Math.random()*4), x, y;
+    if(edge===0){x=Math.random()*W;y=-30;}
+    else if(edge===1){x=W+30;y=Math.random()*H;}
+    else if(edge===2){x=Math.random()*W;y=H+30;}
+    else {x=-30;y=Math.random()*H;}
+    var r=Math.random(), t;
+    if(wave<1) t='blind';
+    else if(wave<2) t=r<0.6?'blind':'crawler';
+    else if(wave<4) t=r<0.4?'blind':r<0.75?'crawler':'digger';
+    else t=r<0.3?'blind':r<0.55?'crawler':r<0.8?'digger':'spitter';
+    var T=ZTYPE[t];
+    zombies.push({ x:x, y:y, type:t, hp:T.hp*(1+wave*0.15), maxHp:T.hp*(1+wave*0.15), speed:T.speed, dmg:T.dmg, color:T.color, r:T.r, hitFlash:0, phase:Math.random()*Math.PI*2 });
+  }
+
+  function spawnBoss(){
+    bossSpawned=true;
+    var T=ZTYPE.queen;
+    var a=Math.random()*Math.PI*2;
+    zombies.push({ x:W/2+Math.cos(a)*Math.max(W,H)*0.55, y:H/2+Math.sin(a)*Math.max(W,H)*0.55, type:'queen', hp:T.hp, maxHp:T.hp, speed:T.speed, dmg:T.dmg, color:T.color, r:T.r, hitFlash:0, phase:0, isBoss:true, spitCd:2 });
+    toast('👑 QUEEN SPITTER ĐÃ XUẤT HIỆN!','#ec4899',3500);
+  }
+
+  function spawnLoot(){
+    var types=['scrap','bio','gold','medkit','ammo'];
+    loots.push({ x:60+Math.random()*(W-120), y:60+Math.random()*(H-120), type:types[Math.floor(Math.random()*types.length)], life:60, pulse:Math.random()*Math.PI*2, r:14 });
+  }
+  function spawnLootAt(x,y){
+    var types=['scrap','bio','gold'];
+    loots.push({ x:x, y:y, type:types[Math.floor(Math.random()*types.length)], life:45, pulse:0, r:14 });
+  }
+
+  function collectLoot(L){
+    var Z=window.__ZNP; if(!Z||!Z.player) return;
+    var f=Z.player;
+    if(L.type==='scrap'){ f.scrap+=25; toast('🔧 +25 Scrap','#f59e0b',900); }
+    else if(L.type==='bio'){ f.bio+=15; toast('🧪 +15 Bio','#22c55e',900); }
+    else if(L.type==='gold'){ var g=(window.__getGold?window.__getGold():0)+10; if(window.__setGold)window.__setGold(g); toast('💰 +10 Vàng','#facc15',900); }
+    else if(L.type==='medkit'){ f.hp=Math.min(f.maxHp,f.hp+30); toast('❤️ +30 HP','#ef4444',900); }
+    else if(L.type==='ammo'){
+      if(f.weapon && f.ammo[f.weapon]!==undefined && f.ammo[f.weapon]!==Infinity){
+        f.ammo[f.weapon]=(f.ammo[f.weapon]||0)+50;
+      }
+      toast('📦 +50 Đạn','#a5f3fc',900);
+    }
+  }
+
+  function step(now){
+    if(mode!=='inside') return;
+    var dt=Math.min((now-lastTime)/1000, 0.05);
+    lastTime=now; timer+=dt;
+
+    // ★ AUTO-FIRE tick
+    if(shootCd>0) shootCd-=dt*1000;
+    tryShoot();
+
+    // Di chuyển
+    var dx=0, dy=0;
+    if(keys['w']||keys['arrowup']) dy-=1;
+    if(keys['s']||keys['arrowdown']) dy+=1;
+    if(keys['a']||keys['arrowleft']) dx-=1;
+    if(keys['d']||keys['arrowright']) dx+=1;
+    if(dx&&dy){ dx*=0.707; dy*=0.707; }
+    var spd=300;
+    player.x=Math.max(20,Math.min(W-20, player.x+dx*spd*dt));
+    player.y=Math.max(20,Math.min(H-20, player.y+dy*spd*dt));
+    player.angle=Math.atan2(mouse.y-player.y, mouse.x-player.x);
+
+    // Bullets
+    for(var i=bullets.length-1;i>=0;i--){
+      var b=bullets[i];
+      b.trail.push({x:b.x,y:b.y}); if(b.trail.length>6) b.trail.shift();
+      b.x+=b.vx; b.y+=b.vy; b.life-=dt;
+      if(b.life<=0||b.x<-50||b.x>W+50||b.y<-50||b.y>H+50){ bullets.splice(i,1); continue; }
+      if(b.isAcid){
+        if(Math.hypot(b.x-player.x,b.y-player.y)<22 && dmgCd<=0){
+          player.hp-=18; dmgCd=0.4; bullets.splice(i,1);
+          if(player.hp<=0){ player.hp=0; onDeath(); return; }
+        }
+        continue;
+      }
+      for(var j=zombies.length-1;j>=0;j--){
+        var z=zombies[j];
+        if(Math.hypot(b.x-z.x,b.y-z.y)<z.r+4){
+          z.hp-=b.dmg; z.hitFlash=0.15;
+          for(var k=0;k<6;k++) particles.push({ x:b.x, y:b.y, vx:(Math.random()-0.5)*6, vy:(Math.random()-0.5)*6, life:0.35, maxLife:0.35, color:'#ef4444', size:2.5 });
+          if(b.pierce && b.pierce>1){ b.pierce--; } else { bullets.splice(i,1); }
+          if(z.hp<=0){
+            killCount++;
+            if(Math.random()<0.35) spawnLootAt(z.x,z.y);
+            for(var k=0;k<12;k++) particles.push({ x:z.x, y:z.y, vx:(Math.random()-0.5)*8, vy:(Math.random()-0.5)*8, life:0.6, maxLife:0.6, color:'#7f1d1d', size:3+Math.random()*3 });
+            zombies.splice(j,1);
+          }
+          break;
+        }
+      }
+    }
+
+    if(dmgCd>0) dmgCd-=dt;
+
+    // Zombies
+    for(var i=zombies.length-1;i>=0;i--){
+      var z=zombies[i];
+      z.phase+=dt*4;
+      if(z.hitFlash>0) z.hitFlash-=dt;
+      var tpx=player.x-z.x, tpy=player.y-z.y, pd=Math.hypot(tpx,tpy)||1;
+      z.x+=tpx/pd*z.speed*60*dt;
+      z.y+=tpy/pd*z.speed*60*dt;
+      if(z.isBoss){
+        z.spitCd-=dt;
+        if(z.spitCd<=0 && pd<600){
+          z.spitCd=3;
+          bullets.push({ x:z.x, y:z.y, vx:tpx/pd*5, vy:tpy/pd*5, life:2.5, trail:[], isAcid:true });
+        }
+      }
+      if(pd<z.r+16 && dmgCd<=0){
+        player.hp-=z.dmg; dmgCd=0.6;
+        player.x-=tpx/pd*15; player.y-=tpy/pd*15;
+        for(var k=0;k<8;k++) particles.push({ x:player.x, y:player.y, vx:(Math.random()-0.5)*6, vy:(Math.random()-0.5)*6, life:0.4, maxLife:0.4, color:'#fbbf24', size:2 });
+        if(player.hp<=0){ player.hp=0; onDeath(); return; }
+      }
+    }
+
+    // Loot
+    for(var i=loots.length-1;i>=0;i--){
+      var L=loots[i]; L.pulse+=dt*4; L.life-=dt;
+      if(L.life<=0){ loots.splice(i,1); continue; }
+      if(Math.hypot(L.x-player.x,L.y-player.y)<24){ collectLoot(L); loots.splice(i,1); }
+    }
+
+    if(timer>30 && !bossSpawned && wave>=3) spawnBoss();
+    if(Math.random()<0.02 && zombies.length<30) spawnZombie();
+    var newWave=Math.floor(timer/20);
+    if(newWave>wave){ wave=newWave; if(wave<=5) toast('⚔️ WAVE '+wave,'#ef4444',1200); }
+
+    for(var i=particles.length-1;i>=0;i--){
+      var p=particles[i];
+      p.x+=p.vx; p.y+=p.vy; p.vx*=0.94; p.vy*=0.94; p.life-=dt;
+      if(p.life<=0) particles.splice(i,1);
+    }
+
+    render();
+  }
+
+  function onDeath(){
+    toast('💀 Bạn đã gục trong hầm ngầm...','#ef4444',3000);
+    if(window.__STATS) window.__STATS.totalDeaths=(window.__STATS.totalDeaths||0)+1;
+    setTimeout(function(){ exitBunker(true); }, 800);
+  }
+
+  function exitBunker(died){
+    if(mode!=='inside') return;
+    mode='exiting';
+    firing=false;
+    if(canvas) canvas.style.opacity='0';
+
+    var Z=window.__ZNP;
+    if(Z&&Z.player){
+      if(savedPos){ Z.player.x=savedPos.x; Z.player.y=savedPos.y; }
+      if(savedInvincible!==null) Z.player.invincible=savedInvincible;
+      if(died){ Z.player.hp=Math.max(20,Z.player.hp*0.5); }
+      else if(killCount>0){
+        var scrap=killCount*8;
+        Z.player.scrap+=scrap;
+        Z.player.bio+=Math.floor(killCount*0.8);
+        var g=(window.__getGold?window.__getGold():0)+killCount*2;
+        if(window.__setGold) window.__setGold(g);
+        toast('🎉 Thoát hầm! +'+scrap+' Scrap · +'+killCount*2+' Vàng','#22c55e',3000);
+      }
+    }
+    window.__ZNP_BUNKER_ACTIVE = false;
+
+    ['vitals-hud','quick-bar','minimap-card','clock-hud','weapon-dock','move-zone','aim-zone'].forEach(function(id){
+      var e=document.getElementById(id);
+      if(e && e.dataset.znpHidden){ e.style.opacity=''; e.style.pointerEvents=''; delete e.dataset.znpHidden; }
+    });
+
+    if(prompt) prompt.style.opacity='0';
+    if(beaconEl) beaconEl.style.opacity='0';
+    if(arrow) arrow.style.opacity='0';
+
+    setTimeout(function(){
+      mode='idle';
+      if(canvas) canvas.style.display='none';
+      hatch=null;
+      nextEnterGuard=Date.now()+5000;
+      setTimeout(spawnHatch, 30000+Math.random()*30000);
+    }, 700);
+  }
+
+  function render(){
+    if(!ctx) return;
+    var grad=ctx.createRadialGradient(W/2,H/2,50,W/2,H/2,Math.max(W,H));
+    grad.addColorStop(0,'#1a1a2e'); grad.addColorStop(1,'#050510');
+    ctx.fillStyle=grad; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='rgba(80,80,100,0.16)'; ctx.lineWidth=1;
+    for(var x=0;x<W;x+=52){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+    for(var y=0;y<H;y+=52){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+    var LC={scrap:'#f59e0b',bio:'#22c55e',gold:'#facc15',medkit:'#ef4444',ammo:'#a5f3fc'};
+    var LI={scrap:'🔧',bio:'🧪',gold:'💰',medkit:'❤️',ammo:'📦'};
+    loots.forEach(function(L){
+      var pu=Math.sin(L.pulse)*3;
+      ctx.save(); ctx.shadowColor=LC[L.type]; ctx.shadowBlur=16;
+      ctx.fillStyle=LC[L.type];
+      ctx.beginPath(); ctx.arc(L.x, L.y+pu, L.r, 0, Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0; ctx.font='14px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(LI[L.type], L.x, L.y+pu); ctx.restore();
+    });
+
+    zombies.forEach(function(z){
+      ctx.save();
+      ctx.fillStyle='rgba(0,0,0,0.5)';
+      ctx.beginPath(); ctx.ellipse(z.x, z.y+6, z.r*1.1, z.r*0.5, 0, 0, Math.PI*2); ctx.fill();
+      if(z.isBoss){ ctx.shadowColor='#ec4899'; ctx.shadowBlur=30; }
+      ctx.fillStyle = z.hitFlash>0 ? '#fff' : z.color;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.r, 0, Math.PI*2); ctx.fill();
+      var ang=Math.atan2(player.y-z.y, player.x-z.x);
+      ctx.fillStyle='#fff';
+      ctx.beginPath();
+      ctx.arc(z.x+Math.cos(ang-0.35)*z.r*0.5, z.y+Math.sin(ang-0.35)*z.r*0.5, z.r*0.16, 0, Math.PI*2);
+      ctx.arc(z.x+Math.cos(ang+0.35)*z.r*0.5, z.y+Math.sin(ang+0.35)*z.r*0.5, z.r*0.16, 0, Math.PI*2);
+      ctx.fill(); ctx.shadowBlur=0;
+      if(z.hp<z.maxHp){
+        ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(z.x-z.r, z.y-z.r-10, z.r*2, 4);
+        ctx.fillStyle=z.isBoss?'#ec4899':'#ef4444';
+        ctx.fillRect(z.x-z.r, z.y-z.r-10, z.r*2*(z.hp/z.maxHp), 4);
+      }
+      if(z.isBoss){
+        ctx.fillStyle='#ec4899'; ctx.font='bold 14px system-ui'; ctx.textAlign='center';
+        ctx.fillText('👑 QUEEN SPITTER', z.x, z.y-z.r-26);
+      }
+      ctx.restore();
+    });
+
+    bullets.forEach(function(b){
+      if(b.isAcid){
+        ctx.save(); ctx.shadowColor='#a855f7'; ctx.shadowBlur=14;
+        ctx.fillStyle='#a855f7'; ctx.beginPath(); ctx.arc(b.x,b.y,8,0,Math.PI*2); ctx.fill(); ctx.restore();
+        return;
+      }
+      ctx.save();
+      if(b.trail.length>1){
+        ctx.strokeStyle=b.big?'rgba(251,191,36,0.7)':'rgba(56,189,248,0.6)';
+        ctx.lineWidth=b.big?6:4;
+        ctx.beginPath(); ctx.moveTo(b.trail[0].x, b.trail[0].y);
+        for(var i=1;i<b.trail.length;i++) ctx.lineTo(b.trail[i].x, b.trail[i].y);
+        ctx.stroke();
+      }
+      ctx.shadowColor='#fbbf24'; ctx.shadowBlur=14; ctx.fillStyle='#fff';
+      ctx.beginPath(); ctx.arc(b.x,b.y,b.big?6:4,0,Math.PI*2); ctx.fill(); ctx.restore();
+    });
+
+    particles.forEach(function(p){
+      ctx.globalAlpha=p.life/p.maxLife;
+      ctx.fillStyle=p.color;
+      ctx.fillRect(p.x-p.size/2, p.y-p.size/2, p.size, p.size);
+    });
+    ctx.globalAlpha=1;
+
+    ctx.save(); ctx.translate(player.x, player.y);
+    var pg=ctx.createRadialGradient(0,0,0,0,0,52);
+    pg.addColorStop(0,'rgba(56,189,248,0.45)'); pg.addColorStop(1,'rgba(56,189,248,0)');
+    ctx.fillStyle=pg; ctx.beginPath(); ctx.arc(0,0,52,0,Math.PI*2); ctx.fill();
+    ctx.rotate(player.angle);
+    ctx.fillStyle='#0f766e'; ctx.beginPath(); ctx.arc(0,0,14,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#22d3ee'; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle='#fde68a'; ctx.beginPath(); ctx.arc(3,0,9,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#0f172a';
+    ctx.beginPath(); ctx.arc(6,-2,1.5,0,Math.PI*2); ctx.arc(6,2,1.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#1e293b'; ctx.fillRect(10,-2,20,4);
+    ctx.restore();
+
+    // Crosshair — sáng khi đang bắn
+    ctx.save();
+    ctx.strokeStyle=firing?'#fbbf24':'rgba(56,189,248,0.85)';
+    ctx.lineWidth=2;
+    if(firing){ ctx.shadowColor='#fbbf24'; ctx.shadowBlur=12; }
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, 14, 0, Math.PI*2);
+    ctx.moveTo(mouse.x-22, mouse.y); ctx.lineTo(mouse.x-6, mouse.y);
+    ctx.moveTo(mouse.x+6, mouse.y); ctx.lineTo(mouse.x+22, mouse.y);
+    ctx.moveTo(mouse.x, mouse.y-22); ctx.lineTo(mouse.x, mouse.y-6);
+    ctx.moveTo(mouse.x, mouse.y+6); ctx.lineTo(mouse.x, mouse.y+22);
+    ctx.stroke(); ctx.restore();
+
+    // HUD
+    ctx.save();
+    ctx.fillStyle='rgba(10,15,29,0.88)';
+    ctx.fillRect(20, 20, 320, 118);
+    ctx.strokeStyle='#a855f7'; ctx.lineWidth=2; ctx.strokeRect(20, 20, 320, 118);
+    ctx.fillStyle='#a855f7'; ctx.font='bold 12px system-ui'; ctx.textAlign='left';
+    ctx.fillText('🕳️ HẦM NGẦM · WAVE '+wave, 32, 42);
+    ctx.fillStyle='#1e293b'; ctx.fillRect(32, 52, 296, 13);
+    var hpPct=player.hp/player.maxHp;
+    ctx.fillStyle = hpPct>0.5?'#22c55e':hpPct>0.25?'#fbbf24':'#ef4444';
+    ctx.fillRect(32, 52, 296*hpPct, 13);
+    ctx.fillStyle='#fff'; ctx.font='bold 11px system-ui'; ctx.textAlign='center';
+    ctx.fillText(Math.round(player.hp)+' / '+player.maxHp, 180, 62);
+    ctx.textAlign='left'; ctx.fillStyle='#94a3b8'; ctx.font='bold 11px system-ui';
+    ctx.fillText('💀 Kills: '+killCount, 32, 90);
+    ctx.fillText('⏱️ '+Math.floor(timer)+'s', 190, 90);
+    ctx.fillStyle=firing?'#fbbf24':'#64748b'; ctx.font='bold 11px system-ui';
+    ctx.fillText(firing?'🔥 ĐANG BẮN':'💤 GIỮ CHUỘT ĐỂ BẮN', 32, 110);
+    ctx.fillStyle='rgba(148,163,184,0.65)'; ctx.font='bold 10px system-ui'; ctx.textAlign='center';
+    ctx.fillText('[ESC] hoặc [B] để thoát hầm', W/2, H-22);
+    ctx.restore();
+  }
+
+  return { mount: mount, isInside: function(){ return mode==='inside'; } };
+})();
+
+function ready(cb){
+  var r=document.getElementById('root');
+  if(r&&r.children.length>0) return cb();
+  setTimeout(function(){ ready(cb); }, 300);
+}
+
+ready(function(){
+  setTimeout(function(){
+    Bunker.mount();
+    setInterval(function(){ try{ Music.tick(); }catch(e){} }, 500);
+    console.log('[ZNP] 🕳️ Bunker v2 (dễ thấy + auto-fire) + 🎵 Dynamic Soundtrack');
+  }, 1800);
+});
+
+})();
+</script>
