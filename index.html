@@ -1922,3 +1922,421 @@ ready(function(){
 });
 })();
 </script>
+<script>
+(function(){
+'use strict';
+
+var PLAT_KEY = 'znp_platform_v1';
+
+/* ============ 1. UTILITIES ============ */
+function isPlaying(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs=document.querySelectorAll('h1');
+  for(var i=0;i<hs.length;i++) if(hs[i].textContent==='TỬ TRẬN') return false;
+  return true;
+}
+
+function toast(m,c,dur){
+  var t=document.createElement('div');
+  t.style.cssText='position:fixed;top:200px;left:50%;transform:translateX(-50%);z-index:10005;padding:10px 22px;border-radius:12px;background:rgba(10,15,29,0.96);border:2px solid '+(c||'#22d3ee')+';color:'+(c||'#a5f3fc')+';font-weight:900;font-size:13px;font-family:system-ui;pointer-events:none;transition:opacity 0.5s;letter-spacing:0.5px';
+  t.textContent=m;
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.opacity='0';}, dur||1900);
+  setTimeout(function(){t.remove();}, (dur||1900)+600);
+}
+
+function getPlatform(){ try{ return localStorage.getItem(PLAT_KEY) || ''; }catch(e){ return ''; } }
+function setPlatform(p){ try{ localStorage.setItem(PLAT_KEY, p); }catch(e){} }
+
+function detectTouch(){
+  return ('ontouchstart' in window) || (navigator.maxTouchPoints>0) || (navigator.msMaxTouchPoints>0);
+}
+
+function isMobileUA(){
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|Tablet/i.test(navigator.userAgent);
+}
+
+/* ============ 2. APPLY PLATFORM MODE ============ */
+function applyPlatform(p){
+  document.body.classList.remove('znp-pc','znp-mobile');
+  document.body.classList.add('znp-'+p);
+  // Lưu trạng thái
+  window.__ZNP_PLATFORM = p;
+  // Force re-apply controls
+  setTimeout(applyCSS, 100);
+}
+
+function applyCSS(){
+  var p = getPlatform();
+  if(p) applyPlatform(p);
+}
+
+/* ============ 3. INJECT CSS ============ */
+var css = document.createElement('style');
+css.id = 'znp-platform-css';
+css.textContent = `
+/* ===== PLATFORM SWITCH ===== */
+body.znp-pc #move-zone,
+body.znp-pc #aim-zone { display: none !important; }
+
+body.znp-mobile #move-zone,
+body.znp-mobile #aim-zone { display: block !important; }
+
+/* Mobile: to hơn joystick */
+body.znp-mobile #move-zone,
+body.znp-mobile #aim-zone {
+  width: 140px !important;
+  height: 140px !important;
+  bottom: 30px !important;
+  border-width: 3px !important;
+}
+body.znp-mobile #move-zone { left: 20px !important; }
+body.znp-mobile #aim-zone { right: 20px !important; }
+
+body.znp-mobile #move-thumb,
+body.znp-mobile #aim-thumb {
+  width: 58px !important;
+  height: 58px !important;
+}
+
+/* Mobile: HUD nhỏ gọn */
+body.znp-mobile #quick-bar {
+  transform: scale(0.78);
+  transform-origin: top left;
+  left: 4px !important;
+  top: 4px !important;
+  max-width: 96vw !important;
+}
+body.znp-mobile #vitals-hud {
+  transform: scale(0.85);
+  transform-origin: top left;
+  top: 4px !important;
+  left: 4px !important;
+  min-width: 160px !important;
+  max-width: 46vw !important;
+}
+body.znp-mobile #minimap-card {
+  transform: scale(0.82);
+  transform-origin: top right;
+  top: 4px !important;
+  right: 4px !important;
+}
+body.znp-mobile #clock-hud {
+  transform: scale(0.85);
+  transform-origin: top right;
+  top: 120px !important;
+  right: 4px !important;
+}
+body.znp-mobile #weapon-dock {
+  transform: scale(0.78);
+  transform-origin: bottom center;
+  bottom: 4px !important;
+  max-width: 96vw !important;
+}
+
+/* Mobile: ẩn drag handle trên UI nhỏ (đỡ rối) */
+body.znp-mobile .drag-handle {
+  font-size: 8px !important;
+  padding: 2px 8px !important;
+  top: -12px !important;
+}
+
+/* PC: hiện hint keyboard */
+body.znp-pc .znp-mobile-hint { display: none !important; }
+body.znp-mobile .znp-pc-hint { display: none !important; }
+
+/* Ẩn con trỏ chuột khi mobile */
+body.znp-mobile canvas { cursor: none; }
+
+/* Nút cài đặt mobile dễ bấm */
+body.znp-mobile button,
+body.znp-mobile [role=button] {
+  min-height: 32px;
+}
+`;
+document.head.appendChild(css);
+
+/* ============ 4. OVERLAY CHỌN PLATFORM ============ */
+var overlayShown = false;
+
+function showPlatformPicker(){
+  if(document.getElementById('znp-plat-picker')) return;
+  overlayShown = true;
+
+  var ov = document.createElement('div');
+  ov.id = 'znp-plat-picker';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:10010;background:rgba(2,6,15,0.96);display:flex;align-items:center;justify-content:center;padding:16px;font-family:system-ui;backdrop-filter:blur(8px);animation:znpFadeIn 0.3s ease-out';
+
+  var defaultMobile = detectTouch() || isMobileUA();
+
+  ov.innerHTML = `
+<div style="background:linear-gradient(135deg,#0d1527,#0a0f1d);border:2px solid #22d3ee;border-radius:20px;padding:26px;max-width:520px;width:100%;box-shadow:0 0 60px rgba(34,211,238,0.55);text-align:center">
+  <div style="font-size:42px;filter:drop-shadow(0 0 14px #22d3ee)">🎮</div>
+  <h2 style="color:#67e8f9;font-weight:900;letter-spacing:3px;font-size:18px;margin:8px 0 4px;text-shadow:0 0 20px rgba(34,211,238,0.7)">CHỌN CHẾ ĐỘ CHƠI</h2>
+  <div style="color:#94a3b8;font-size:11.5px;margin-bottom:20px">Bạn muốn chơi bằng gì? (Có thể đổi lại trong ⚙️ Cài đặt)</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <button data-plat="pc" style="padding:20px 14px;border-radius:14px;border:2px solid #38bdf8;background:rgba(56,189,248,0.12);cursor:pointer;font-family:system-ui;color:#fff;transition:all 0.2s">
+      <div style="font-size:36px;filter:drop-shadow(0 0 8px #38bdf8)">🖥️</div>
+      <div style="color:#7dd3fc;font-weight:900;font-size:15px;letter-spacing:2px;margin-top:8px">PC</div>
+      <div style="color:#94a3b8;font-size:10.5px;margin-top:4px;line-height:1.5">Bàn phím WASD<br>+ Chuột ngắm/bắn</div>
+    </button>
+    <button data-plat="mobile" style="padding:20px 14px;border-radius:14px;border:2px solid #fbbf24;background:rgba(251,191,36,0.12);cursor:pointer;font-family:system-ui;color:#fff;transition:all 0.2s">
+      <div style="font-size:36px;filter:drop-shadow(0 0 8px #fbbf24)">📱</div>
+      <div style="color:#fbbf24;font-weight:900;font-size:15px;letter-spacing:2px;margin-top:8px">MOBILE</div>
+      <div style="color:#94a3b8;font-size:10.5px;margin-top:4px;line-height:1.5">Joystick 2 tay<br>Tối ưu cho mọi điện thoại</div>
+    </button>
+  </div>
+
+  <div id="znp-plat-detect" style="color:#64748b;font-size:10.5px;font-weight:900;letter-spacing:1px"></div>
+</div>`;
+
+  document.body.appendChild(ov);
+
+  // Auto-hint thiết bị
+  var det = ov.querySelector('#znp-plat-detect');
+  if(det){
+    if(defaultMobile) det.innerHTML = '📡 Phát hiện thiết bị cảm ứng — khuyên dùng <b style="color:#fbbf24">MOBILE</b>';
+    else det.innerHTML = '🖱️ Phát hiện máy tính — khuyên dùng <b style="color:#7dd3fc">PC</b>';
+  }
+
+  // Hover + click
+  ov.querySelectorAll('[data-plat]').forEach(function(b){
+    b.onmouseenter = function(){ b.style.transform='translateY(-4px) scale(1.03)'; b.style.boxShadow='0 12px 30px '+(b.getAttribute('data-plat')==='pc'?'rgba(56,189,248,0.5)':'rgba(251,191,36,0.5)'); };
+    b.onmouseleave = function(){ b.style.transform='none'; b.style.boxShadow='none'; };
+    b.onclick = function(){
+      var p = b.getAttribute('data-plat');
+      setPlatform(p);
+      applyPlatform(p);
+      ov.remove();
+      overlayShown = false;
+      if(window.__znpToast) window.__znpToast('🎮 Chế độ: '+p.toUpperCase(), p==='pc'?'#38bdf8':'#fbbf24', 1800);
+    };
+  });
+}
+
+/* ============ 5. DETECT KHI VÀO GAME LẦN ĐẦU ============ */
+var lastP = null;
+setInterval(function(){
+  var p = isPlaying();
+  if(p && !lastP){
+    // Vừa vào game
+    var saved = getPlatform();
+    if(!saved && !overlayShown){
+      // Lần đầu → hiện picker
+      setTimeout(showPlatformPicker, 300);
+    } else if(saved) {
+      applyPlatform(saved);
+    }
+  }
+  if(!p && lastP){
+    // Vừa thoát → reset
+    overlayShown = false;
+  }
+  lastP = p;
+}, 300);
+
+/* ============ 6. THÊM NÚT XÓA DATA VÀO CÀI ĐẶT ============ */
+function injectClearButton(){
+  // Tìm modal cài đặt — nó chứa "CÀI ĐẶT HỆ THỐNG"
+  var modals = document.querySelectorAll('div');
+  for(var i=0;i<modals.length;i++){
+    var m = modals[i];
+    // Chỉ check top-level đủ lớn
+    if(!m.textContent || !m.textContent.includes('CÀI ĐẶT HỆ THỐNG')) continue;
+    if(m.id === 'znp-clearbtn-injected') continue;
+    // Đây là modal setting
+    var container = m;
+    // Tìm nút "LƯU & ĐÓNG"
+    var all = container.querySelectorAll('button');
+    var saveBtn = null;
+    for(var j=0;j<all.length;j++){
+      if(all[j].textContent && all[j].textContent.includes('LƯU')){
+        saveBtn = all[j];
+        break;
+      }
+    }
+    if(!saveBtn) continue;
+    if(container.querySelector('#znp-clear-data-btn')) return; // đã chèn
+
+    // Tạo khu vực chọn platform + xóa data
+    var wrap = document.createElement('div');
+    wrap.id = 'znp-clearbtn-injected';
+    wrap.style.cssText = 'margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.1)';
+
+    wrap.innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <div>
+            <div style="font-size:13px;font-weight:900;color:#fff">Chế độ chơi</div>
+            <div style="font-size:10.5px;color:#94a3b8">PC (chuột/phím) hoặc Mobile (cảm ứng)</div>
+          </div>
+          <div style="display:flex;gap:6px;background:#091322;padding:4px;border-radius:10px;border:1px solid #22d3ee55">
+            <button data-set-plat="pc" style="padding:6px 14px;border-radius:8px;font-size:11px;font-weight:900;border:none;cursor:pointer;font-family:system-ui;background:transparent;color:#94a3b8">🖥️ PC</button>
+            <button data-set-plat="mobile" style="padding:6px 14px;border-radius:8px;font-size:11px;font-weight:900;border:none;cursor:pointer;font-family:system-ui;background:transparent;color:#94a3b8">📱 MOBILE</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:12px;border-radius:12px;border:2px solid #ef4444;background:rgba(239,68,68,0.08)">
+        <div style="color:#fca5a5;font-weight:900;font-size:12px;letter-spacing:1px;margin-bottom:4px">⚠️ VÙNG NGUY HIỂM</div>
+        <div style="color:#94a3b8;font-size:10.5px;margin-bottom:10px;line-height:1.5">Xoá toàn bộ: Vàng, Skin, Stats, Class, Nhiệm vụ, Thành tựu, cài đặt, vị trí HUD...<br>Game sẽ trở về trạng thái ban đầu.</div>
+        <button id="znp-clear-data-btn" style="width:100%;padding:10px;border-radius:10px;font-weight:900;font-size:13px;font-family:system-ui;background:linear-gradient(135deg,#dc2626,#991b1b);color:#fff;border:2px solid #fca5a5;cursor:pointer;letter-spacing:1px">🗑️ XOÁ TOÀN BỘ DỮ LIỆU GAME</button>
+      </div>
+    `;
+
+    saveBtn.parentNode.insertBefore(wrap, saveBtn.nextSibling);
+
+    // Gắn handler cho nút chọn platform
+    wrap.querySelectorAll('[data-set-plat]').forEach(function(b){
+      b.onclick = function(){
+        var p = b.getAttribute('data-set-plat');
+        setPlatform(p);
+        applyPlatform(p);
+        updatePlatBtnHighlight(wrap);
+        if(window.__znpToast) window.__znpToast('Đã đổi chế độ: '+p.toUpperCase(), p==='pc'?'#38bdf8':'#fbbf24');
+      };
+    });
+    updatePlatBtnHighlight(wrap);
+
+    // Gắn handler xóa data
+    var clearBtn = wrap.querySelector('#znp-clear-data-btn');
+    var confirmState = 0;
+    clearBtn.onclick = function(){
+      if(confirmState === 0){
+        confirmState = 1;
+        clearBtn.textContent = '⚠️ NHẤN LẦN NỮA ĐỂ XÁC NHẬN XOÁ';
+        clearBtn.style.background = 'linear-gradient(135deg,#fbbf24,#b45309)';
+        clearBtn.style.color = '#000';
+        setTimeout(function(){
+          if(confirmState === 1){
+            confirmState = 0;
+            clearBtn.textContent = '🗑️ XOÁ TOÀN BỘ DỮ LIỆU GAME';
+            clearBtn.style.background = 'linear-gradient(135deg,#dc2626,#991b1b)';
+            clearBtn.style.color = '#fff';
+          }
+        }, 4000);
+        return;
+      }
+      if(confirmState === 1){
+        confirmState = 2;
+        doClearAll();
+      }
+    };
+  }
+}
+
+function updatePlatBtnHighlight(wrap){
+  var cur = getPlatform() || (detectTouch()?'mobile':'pc');
+  wrap.querySelectorAll('[data-set-plat]').forEach(function(b){
+    var p = b.getAttribute('data-set-plat');
+    if(p === cur){
+      b.style.background = p==='pc' ? '#38bdf8' : '#fbbf24';
+      b.style.color = p==='pc' ? '#0c4a6e' : '#000';
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = '#94a3b8';
+    }
+  });
+}
+
+function doClearAll(){
+  try{
+    // Xoá toàn bộ localStorage + sessionStorage liên quan game
+    var keysToRemove = [];
+    for(var i=0;i<localStorage.length;i++){
+      var k = localStorage.key(i);
+      if(k && (k.startsWith('znp_') || k.startsWith('zombie_'))) keysToRemove.push(k);
+    }
+    keysToRemove.forEach(function(k){ localStorage.removeItem(k); });
+
+    // Session
+    sessionStorage.clear();
+
+    // Stats global
+    if(window.__STATS){
+      window.__STATS = {
+        totalKills:0, totalDeaths:0, totalBossKills:0, totalScrap:0, totalBio:0,
+        bestDay:1, bestKills:0, bestLevel:1, weaponKills:{}, runsCount:0, startTime:Date.now()
+      };
+    }
+
+    // Toast + reload
+    if(window.__znpToast) window.__znpToast('🗑️ ĐÃ XOÁ TOÀN BỘ DỮ LIỆU — Đang tải lại...', '#ef4444', 2500);
+
+    setTimeout(function(){
+      location.reload();
+    }, 1200);
+  }catch(e){
+    console.error('[CLEAR DATA]', e);
+    alert('Lỗi khi xoá: '+e.message);
+  }
+}
+
+/* Detect setting modal mở liên tục */
+setInterval(function(){
+  // Chỉ chèn khi modal setting đang hiện
+  var txts = document.querySelectorAll('h2');
+  for(var i=0;i<txts.length;i++){
+    if(txts[i].textContent && txts[i].textContent.includes('CÀI ĐẶT HỆ THỐNG')){
+      injectClearButton();
+      return;
+    }
+  }
+}, 400);
+
+/* ============ 7. MOBILE RESPONSIVE — SCALE THEO MÀN HÌNH ============ */
+function applyMobileScale(){
+  if(getPlatform() !== 'mobile') {
+    document.documentElement.style.fontSize = '';
+    return;
+  }
+  var w = Math.min(window.innerWidth, window.innerHeight);
+  // Với điện thoại nhỏ (<380px), scale font chữ nhỏ hơn
+  var scale = 1;
+  if(w < 360) scale = 0.85;
+  else if(w < 400) scale = 0.92;
+  else if(w > 800) scale = 1.08; // tablet
+  document.documentElement.style.fontSize = (16*scale)+'px';
+}
+
+window.addEventListener('resize', applyMobileScale);
+window.addEventListener('orientationchange', function(){
+  setTimeout(applyMobileScale, 300);
+});
+
+/* ============ 8. AUTO APPLY ON LOAD ============ */
+function boot(){
+  var p = getPlatform();
+  if(p){
+    applyPlatform(p);
+  } else if(detectTouch() || isMobileUA()){
+    // Chưa chọn nhưng là mobile → gợi ý
+    applyPlatform('pc'); // default PC, sẽ hỏi lại khi vào game
+  }
+  applyMobileScale();
+}
+boot();
+setTimeout(boot, 1500);
+setTimeout(applyCSS, 2500);
+
+/* ============ 9. INTERCEPT: đảm bảo joystick hoạt động đúng ============ */
+/* Nếu mobile mode, force touch events cho canvas */
+document.addEventListener('touchstart', function(e){
+  var p = getPlatform();
+  if(p !== 'mobile') return;
+  // Ngăn scroll bounce
+  if(e.touches.length > 1) e.preventDefault();
+}, {passive: false});
+
+/* Fix viewport cho iOS */
+if(!document.getElementById('znp-viewport-meta')){
+  var meta = document.querySelector('meta[name=viewport]');
+  if(meta){
+    meta.setAttribute('content','width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+  }
+}
+
+console.log('[ZNP] 🎮 Platform + 🗑️ Clear Data pack loaded');
+})();
+</script>
