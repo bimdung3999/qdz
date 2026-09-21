@@ -18440,7 +18440,7 @@ console.log('%c   🎮 Ra menu → bấm mini player để phát lại', 'color:
 <script>
 /* =========================================================
    🔧 PATCH v11.9 — FIX TRIỆT ĐỂ
-   - Đổi tên: "Tìm Em" / "Không Buồn"
+   - Đổi tên: "Tìm Em" / "Không Buông"
    - Nút PAUSE: XÓA IFRAME (cách duy nhất work cross-origin)
    - Nút PLAY: TẠO LẠI IFRAME
    - Volume slider: <100 dùng postMessage, =0 thì mute thực sự
@@ -18466,7 +18466,7 @@ var SONGS = [
   },
   {
     id: 'chill',
-    title: 'Không Buồn',
+    title: 'Không Buông',
     sub: 'EdgeOne · Bản 2',
     icon: '🎧',
     url: 'https://yearling-peach-ez3z55sj.edgeone.dev/'
@@ -19008,6 +19008,2044 @@ window.__ZNP_V119 = {
 };
 
 console.log('%c[v11.9] 🎵 Script đã nạp','color:#22c55e;font-weight:900');
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 PATCH v12.0 — BẢN CUỐI CÙNG
+   - 3 bài: Tìm Em / Không Buông / Chờ Anh
+   - Toggle "Nhạc trong trận" (bật = nhạc vẫn phát khi vào trận)
+   - Tự rebuild playlist — không phụ thuộc code cũ
+   - Nút pause/mute/volume hoạt động chắc chắn
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_V120) return;
+window.__ZNP_V120 = true;
+
+console.log('%c[v12.0] 🚀 Khởi động bản cuối...','color:#22c55e;font-weight:900;font-size:14px');
+
+/* ═══════════════════════════════════════════════════════
+   1. DANH SÁCH NHẠC — 3 BÀI
+   ═══════════════════════════════════════════════════════ */
+var SONGS = [
+  {
+    id: 'timem',
+    title: 'Tìm Em',
+    sub: 'EdgeOne · Bản 1',
+    icon: '🎵',
+    url: 'https://confident-copper-fjxqd28c.edgeone.dev/'
+  },
+  {
+    id: 'khongbuon',
+    title: 'Không Buồn',
+    sub: 'EdgeOne · Bản 2',
+    icon: '🎧',
+    url: 'https://yearling-peach-ez3z55sj.edgeone.dev/'
+  },
+  {
+    id: 'choanh',
+    title: 'Chờ Anh',
+    sub: 'EdgeOne · Bản 3',
+    icon: '💜',
+    url: 'https://amused-bronze-yllzv2el.edgeone.dev/'
+  }
+];
+
+/* ═══════════════════════════════════════════════════════
+   2. STATE + LOCALSTORAGE
+   ═══════════════════════════════════════════════════════ */
+var LS_VOL = 'znp_web_vol_v12';
+var LS_INBATTLE = 'znp_web_inbattle_v12';   /* Nhạc phát cả trong trận */
+
+var state = {
+  currentId: 'timem',
+  playing: false,
+  muted: false,
+  volume: 100,
+  inBattle: false          /* true = nhạc vẫn phát khi vào trận */
+};
+
+try{
+  var v = parseInt(localStorage.getItem(LS_VOL) || '100');
+  if(v >= 0 && v <= 100) state.volume = v;
+}catch(e){}
+
+try{
+  state.inBattle = localStorage.getItem(LS_INBATTLE) === '1';
+}catch(e){}
+
+function saveVol(){
+  try{ localStorage.setItem(LS_VOL, String(state.volume)); }catch(e){}
+}
+function saveInBattle(){
+  try{ localStorage.setItem(LS_INBATTLE, state.inBattle ? '1' : '0'); }catch(e){}
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. HELPERS
+   ═══════════════════════════════════════════════════════ */
+function getSong(id){
+  for(var i = 0; i < SONGS.length; i++) if(SONGS[i].id === id) return SONGS[i];
+  return SONGS[0];
+}
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+  });
+}
+function isPlayingGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i = 0; i < hs.length; i++){
+    if(hs[i].textContent === 'TỬ TRẬN') return false;
+  }
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════
+   4. IFRAME — TẠO / XÓA
+   ═══════════════════════════════════════════════════════ */
+function createIframe(song){
+  var body = document.getElementById('zwp-body');
+  if(!body) return null;
+
+  var old = document.getElementById('zwp-iframe');
+  if(old && old.parentNode) old.parentNode.removeChild(old);
+
+  var iframe = document.createElement('iframe');
+  iframe.id = 'zwp-iframe';
+  iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  iframe.allowFullscreen = true;
+  iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#000;';
+  iframe.dataset.songId = song.id;
+  iframe.src = song.url;
+  body.appendChild(iframe);
+
+  /* Hiện spinner */
+  var load = document.getElementById('zwp-load');
+  if(!load){
+    load = document.createElement('div');
+    load.id = 'zwp-load';
+    load.style.cssText = 'position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(135deg,rgba(13,21,39,0.96),rgba(26,14,46,0.96));transition:opacity 0.4s;pointer-events:none;';
+    load.innerHTML =
+      '<div style="width:44px;height:44px;border:3px solid rgba(34,211,238,0.25);border-top-color:#22d3ee;border-radius:50%;animation:zwpSpin 0.75s linear infinite"></div>' +
+      '<div style="color:#67e8f9;font-weight:900;font-size:13px;letter-spacing:1px">Đang tải nhạc...</div>';
+    body.appendChild(load);
+  } else {
+    load.style.display = 'flex';
+    load.style.opacity = '1';
+  }
+
+  iframe.onload = function(){
+    var l = document.getElementById('zwp-load');
+    if(l){
+      l.style.opacity = '0';
+      setTimeout(function(){ if(l.parentNode) l.remove(); }, 400);
+    }
+  };
+
+  return iframe;
+}
+
+function destroyIframe(){
+  var iframe = document.getElementById('zwp-iframe');
+  if(iframe && iframe.parentNode){
+    try{ iframe.src = 'about:blank'; }catch(e){}
+    iframe.parentNode.removeChild(iframe);
+    return true;
+  }
+  return false;
+}
+
+/* ═══════════════════════════════════════════════════════
+   5. PLAY / PAUSE
+   ═══════════════════════════════════════════════════════ */
+function playById(id){
+  var song = getSong(id);
+  if(!song) return;
+
+  if(id === state.currentId && state.playing){
+    pauseAudio();
+    return;
+  }
+
+  state.currentId = id;
+  state.muted = false;
+
+  createIframe(song);
+  state.playing = true;
+
+  setTimeout(applyVolume, 800);
+  setTimeout(applyVolume, 2000);
+  setTimeout(applyVolume, 3500);
+
+  updateAll();
+  injectList();
+}
+
+function pauseAudio(){
+  destroyIframe();
+  state.playing = false;
+  updateAll();
+  injectList();
+}
+
+function toggleAudio(){
+  if(state.playing) pauseAudio();
+  else playById(state.currentId);
+}
+
+/* ═══════════════════════════════════════════════════════
+   6. VOLUME
+   ═══════════════════════════════════════════════════════ */
+function applyVolume(){
+  var iframe = document.getElementById('zwp-iframe');
+  if(!iframe) return;
+  var v = state.muted ? 0 : state.volume;
+  var msgs = [
+    { event:'command', func:'setVolume', args:[v] },
+    { type:'setVolume', value: v/100 },
+    { type:'setVolume', volume: v/100 },
+    { volume: v/100 }
+  ];
+  msgs.forEach(function(m){
+    try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+    try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+  });
+  try{
+    var doc = iframe.contentDocument || iframe.contentWindow.document;
+    if(doc){
+      doc.querySelectorAll('audio, video').forEach(function(m){
+        try{ m.volume = Math.min(1, v/100); m.muted = state.muted; }catch(e){}
+      });
+    }
+  }catch(e){}
+}
+
+function setVolume(v){
+  v = Math.max(0, Math.min(100, v));
+  state.volume = v;
+  state.muted = (v === 0);
+  saveVol();
+
+  if(state.playing){
+    if(v === 0){
+      destroyIframe();
+    } else {
+      var iframe = document.getElementById('zwp-iframe');
+      if(!iframe){
+        createIframe(getSong(state.currentId));
+        setTimeout(applyVolume, 800);
+        setTimeout(applyVolume, 1800);
+        setTimeout(applyVolume, 3000);
+      } else {
+        applyVolume();
+      }
+    }
+  }
+  updateVolumeUI();
+}
+
+function toggleMute(){
+  if(state.muted) setVolume(state.volume || 100);
+  else { state._lastVol = state.volume; setVolume(0); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   7. TOGGLE NHẠC TRONG TRẬN
+   ═══════════════════════════════════════════════════════ */
+function toggleInBattle(){
+  state.inBattle = !state.inBattle;
+  saveInBattle();
+  updateInBattleUI();
+
+  /* Nếu đang trong trận và vừa TẮT toggle → tắt nhạc ngay */
+  if(!state.inBattle && isPlayingGame() && state.playing){
+    destroyIframe();
+    state.playing = false;
+    updateAll();
+  }
+  /* Nếu đang trong trận và vừa BẬT toggle → không làm gì, user tự bấm play */
+
+  console.log('[v12.0] Nhạc trong trận:', state.inBattle ? 'BẬT' : 'TẮT');
+  if(window.__znpToast){
+    window.__znpToast(
+      state.inBattle ? '🎮 Nhạc sẽ phát cả khi vào trận' : '🎮 Nhạc tắt khi vào trận',
+      state.inBattle ? '#22c55e' : '#f87171', 2200
+    );
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   8. UPDATE UI
+   ═══════════════════════════════════════════════════════ */
+function updateVolumeUI(){
+  var slider = document.getElementById('zwp-vol-slider');
+  var valEl = document.getElementById('zwp-vol-val');
+  var btn = document.getElementById('zwp-vol-btn');
+  if(slider) slider.value = state.volume;
+  if(valEl) valEl.textContent = state.volume + '%';
+  if(btn){
+    if(state.muted || state.volume === 0) btn.textContent = '🔇';
+    else if(state.volume < 50) btn.textContent = '🔉';
+    else btn.textContent = '🔊';
+  }
+}
+
+function updateInBattleUI(){
+  var btn = document.getElementById('zwp-inbattle-btn');
+  if(!btn) return;
+  if(state.inBattle){
+    btn.textContent = '🎮 TRONG TRẬN: BẬT';
+    btn.style.background = 'linear-gradient(135deg,#22c55e,#15803d)';
+    btn.style.borderColor = '#86efac';
+    btn.style.color = '#fff';
+  } else {
+    btn.textContent = '🎮 TRONG TRẬN: TẮT';
+    btn.style.background = 'rgba(239,68,68,0.18)';
+    btn.style.borderColor = 'rgba(239,68,68,0.6)';
+    btn.style.color = '#fca5a5';
+  }
+}
+
+function updateAll(){
+  var cur = getSong(state.currentId);
+  var fn = document.getElementById('zwp-foot-n');
+  var fs = document.getElementById('zwp-foot-s');
+  if(fn) fn.textContent = cur.title;
+  if(fs) fs.textContent = cur.sub;
+
+  var playBtn = document.getElementById('zwp-play');
+  if(playBtn){
+    if(state.playing){
+      playBtn.classList.remove('paused');
+      playBtn.innerHTML = '⏸';
+    } else {
+      playBtn.classList.add('paused');
+      playBtn.innerHTML = '▶';
+    }
+  }
+
+  var hsub = document.getElementById('zwp-head-sub');
+  if(hsub) hsub.textContent = cur.title + ' · ' + SONGS.length + ' bài';
+
+  var mini = document.getElementById('zwp-mini');
+  if(mini){
+    if(state.playing){
+      mini.classList.add('playing');
+      var ic = document.getElementById('zwp-mini-ic');
+      if(ic) ic.textContent = '🎶';
+      var t1 = document.getElementById('zwp-mini-t1');
+      if(t1) t1.textContent = cur.title.toUpperCase();
+      var t2 = document.getElementById('zwp-mini-t2');
+      if(t2) t2.textContent = 'Đang phát · Bấm để điều khiển';
+    } else {
+      mini.classList.remove('playing');
+      var ic2 = document.getElementById('zwp-mini-ic');
+      if(ic2) ic2.textContent = '🎵';
+      var t12 = document.getElementById('zwp-mini-t1');
+      if(t12) t12.textContent = 'NHẠC WEB';
+      var t22 = document.getElementById('zwp-mini-t2');
+      if(t22) t22.textContent = 'Bấm để phát nhạc';
+    }
+  }
+  updateVolumeUI();
+  updateInBattleUI();
+}
+
+/* ═══════════════════════════════════════════════════════
+   9. INJECT CONTROLS VÀO MODAL
+   ═══════════════════════════════════════════════════════ */
+function injectVolumeUI(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  if(modal.querySelector('#zwp-vol-wrap')) return;
+
+  var foot = modal.querySelector('#zwp-foot');
+  if(!foot) return;
+
+  /* Wrap chứa volume + toggle inbattle */
+  var wrap = document.createElement('div');
+  wrap.id = 'zwp-vol-wrap';
+  wrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;';
+  wrap.innerHTML =
+    /* Nút toggle in battle */
+    '<button id="zwp-inbattle-btn" title="Bật/Tắt nhạc khi vào trận" style="' +
+      'height:34px;padding:0 10px;border-radius:9px;' +
+      'font-family:inherit;font-weight:900;font-size:10px;letter-spacing:0.5px;' +
+      'cursor:pointer;transition:all 0.2s;white-space:nowrap;' +
+      'border:1.5px solid rgba(239,68,68,0.6);' +
+      'background:rgba(239,68,68,0.18);color:#fca5a5;' +
+    '">🎮 TRONG TRẬN: TẮT</button>' +
+    /* Nút volume */
+    '<button id="zwp-vol-btn" title="Bật/Tắt tiếng" style="' +
+      'width:36px;height:36px;border-radius:10px;' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'background:rgba(34,211,238,0.14);' +
+      'border:2px solid rgba(34,211,238,0.55);' +
+      'color:#a5f3fc;font-size:16px;cursor:pointer;font-family:inherit;' +
+    '">🔊</button>' +
+    /* Slider */
+    '<input id="zwp-vol-slider" type="range" min="0" max="100" value="' + state.volume + '" style="' +
+      'width:85px;height:6px;accent-color:#22d3ee;cursor:pointer;' +
+    '" />' +
+    /* Text % */
+    '<span id="zwp-vol-val" style="' +
+      'color:#22d3ee;font-weight:900;font-size:11px;' +
+      'min-width:34px;text-align:right;' +
+      'font-family:ui-monospace,monospace;' +
+    '">' + state.volume + '%</span>';
+
+  /* Chèn vào foot */
+  foot.appendChild(wrap);
+
+  /* Bind slider */
+  var slider = wrap.querySelector('#zwp-vol-slider');
+  slider.oninput = function(e){ e.stopPropagation(); setVolume(parseInt(slider.value)); };
+  slider.onclick = function(e){ e.stopPropagation(); };
+
+  /* Bind volume button */
+  var btn = wrap.querySelector('#zwp-vol-btn');
+  btn.onclick = function(e){ e.stopPropagation(); e.preventDefault(); toggleMute(); };
+
+  /* Bind in-battle button */
+  var bBtn = wrap.querySelector('#zwp-inbattle-btn');
+  bBtn.onclick = function(e){ e.stopPropagation(); e.preventDefault(); toggleInBattle(); };
+
+  updateVolumeUI();
+  updateInBattleUI();
+  console.log('[v12.0] 🎚️ UI controls đã chèn');
+}
+
+/* ═══════════════════════════════════════════════════════
+   10. REBUILD PLAYLIST
+   ═══════════════════════════════════════════════════════ */
+function buildListHTML(){
+  var html = '';
+  SONGS.forEach(function(s){
+    var active = (s.id === state.currentId);
+    html +=
+      '<div class="it' + (active ? ' active' : '') + '" data-id="' + s.id + '">' +
+        '<div class="ic">' + s.icon + '</div>' +
+        '<div class="m">' +
+          '<div class="n">' + esc(s.title) + '</div>' +
+          '<div class="s">' + esc(s.sub) + '</div>' +
+        '</div>' +
+        (active && state.playing ? '<div class="badge">▶ ĐANG PHÁT</div>' : '') +
+      '</div>';
+  });
+  return html;
+}
+
+function bindListClicks(list){
+  list.querySelectorAll('.it').forEach(function(el){
+    el.onclick = function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      playById(el.getAttribute('data-id'));
+    };
+  });
+}
+
+function injectList(){
+  var card = document.querySelector('#zwp-card');
+  if(!card) return;
+
+  var list = document.getElementById('zwp-list');
+  if(!list){
+    list = document.createElement('div');
+    list.id = 'zwp-list';
+    var foot = card.querySelector('#zwp-foot');
+    if(foot && foot.nextSibling) card.insertBefore(list, foot.nextSibling);
+    else card.appendChild(list);
+  }
+
+  var html = buildListHTML();
+  if(list.innerHTML !== html){
+    list.innerHTML = html;
+    bindListClicks(list);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   11. HOOK CONTROLS
+   ═══════════════════════════════════════════════════════ */
+function hookControls(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+
+  var playBtn = modal.querySelector('#zwp-play');
+  if(playBtn && !playBtn.dataset.v12){
+    playBtn.dataset.v12 = '1';
+    playBtn.onclick = function(e){
+      e.stopPropagation(); e.preventDefault();
+      toggleAudio();
+    };
+  }
+  var prevBtn = modal.querySelector('#zwp-prev');
+  if(prevBtn && !prevBtn.dataset.v12){
+    prevBtn.dataset.v12 = '1';
+    prevBtn.onclick = function(e){
+      e.stopPropagation(); e.preventDefault();
+      var idx = 0;
+      for(var i = 0; i < SONGS.length; i++) if(SONGS[i].id === state.currentId) idx = i;
+      playById(SONGS[(idx - 1 + SONGS.length) % SONGS.length].id);
+    };
+  }
+  var nextBtn = modal.querySelector('#zwp-next');
+  if(nextBtn && !nextBtn.dataset.v12){
+    nextBtn.dataset.v12 = '1';
+    nextBtn.onclick = function(e){
+      e.stopPropagation(); e.preventDefault();
+      var idx = 0;
+      for(var i = 0; i < SONGS.length; i++) if(SONGS[i].id === state.currentId) idx = i;
+      playById(SONGS[(idx + 1) % SONGS.length].id);
+    };
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   12. OVERRIDE API
+   ═══════════════════════════════════════════════════════ */
+function patchAPI(){
+  if(!window.__ZNP_WEB) return false;
+  if(window.__ZNP_WEB.__v12) return true;
+  window.__ZNP_WEB.__v12 = true;
+
+  window.__ZNP_WEB.list = function(){ return SONGS.slice(); };
+  window.__ZNP_WEB.playById = playById;
+  window.__ZNP_WEB.play = function(){ playById(state.currentId); };
+  window.__ZNP_WEB.pause = pauseAudio;
+  window.__ZNP_WEB.toggle = toggleAudio;
+  window.__ZNP_WEB.state = function(){
+    return {
+      currentId: state.currentId,
+      playing: state.playing,
+      volume: state.volume,
+      muted: state.muted,
+      inBattle: state.inBattle
+    };
+  };
+
+  var origOpen = window.__ZNP_WEB.open;
+  window.__ZNP_WEB.open = function(){
+    try{ if(origOpen) origOpen(); }catch(e){}
+    var retries = [50, 300, 800, 1500, 2500];
+    retries.forEach(function(t){
+      setTimeout(function(){
+        injectVolumeUI();
+        injectList();
+        hookControls();
+      }, t);
+    });
+  };
+
+  console.log('[v12.0] ✅ API đã override');
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════
+   13. POLL
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  var modal = document.getElementById('zwp-modal');
+  if(modal){
+    injectVolumeUI();
+    injectList();
+    hookControls();
+  }
+}, 400);
+
+/* ═══════════════════════════════════════════════════════
+   14. XỬ LÝ VÀO TRẬN / RA MENU
+   ═══════════════════════════════════════════════════════ */
+var _lastP = null;
+setInterval(function(){
+  var p = isPlayingGame();
+  if(p === _lastP) return;
+  _lastP = p;
+
+  if(p){
+    /* VÀO TRẬN */
+    if(!state.inBattle){
+      /* Toggle TẮT → tắt nhạc */
+      if(state.playing){
+        destroyIframe();
+        state.playing = false;
+        console.log('%c[v12.0] 🎮 Vào trận → tắt nhạc (toggle TẮT)','color:#f87171;font-weight:900');
+      }
+      /* Ẩn mini player */
+      var mini = document.getElementById('zwp-mini');
+      if(mini){
+        mini.style.opacity = '0';
+        mini.style.pointerEvents = 'none';
+        mini.style.transform = 'translateX(-200px)';
+      }
+      /* Đóng modal */
+      var modal = document.getElementById('zwp-modal');
+      if(modal) modal.classList.remove('open');
+    } else {
+      /* Toggle BẬT → giữ nhạc, chỉ ẩn mini player */
+      var mini2 = document.getElementById('zwp-mini');
+      if(mini2){
+        mini2.style.opacity = '0';
+        mini2.style.pointerEvents = 'none';
+        mini2.style.transform = 'translateX(-200px)';
+      }
+      var modal2 = document.getElementById('zwp-modal');
+      if(modal2) modal2.classList.remove('open');
+      console.log('%c[v12.0] 🎮 Vào trận → giữ nhạc (toggle BẬT)','color:#22c55e;font-weight:900');
+    }
+    updateAll();
+  } else {
+    /* RA MENU → hiện lại mini player */
+    var mini3 = document.getElementById('zwp-mini');
+    if(mini3){
+      mini3.style.opacity = '1';
+      mini3.style.pointerEvents = 'auto';
+      mini3.style.transform = '';
+    }
+    updateAll();
+    console.log('%c[v12.0] 🏠 Ra menu','color:#22d3ee;font-weight:900');
+  }
+}, 400);
+
+/* ═══════════════════════════════════════════════════════
+   15. MUTATIONOBSERVER
+   ═══════════════════════════════════════════════════════ */
+function bootMO(){
+  if(!document.body){ setTimeout(bootMO, 200); return; }
+  var mo = new MutationObserver(function(){
+    if(document.getElementById('zwp-modal')){
+      clearTimeout(mo._t);
+      mo._t = setTimeout(function(){
+        injectVolumeUI();
+        injectList();
+        hookControls();
+      }, 80);
+    }
+  });
+  mo.observe(document.body, { childList:true, subtree:true });
+}
+bootMO();
+
+/* ═══════════════════════════════════════════════════════
+   16. BOOT
+   ═══════════════════════════════════════════════════════ */
+var tries = 0;
+var bootTimer = setInterval(function(){
+  tries++;
+  if(patchAPI()){
+    clearInterval(bootTimer);
+    console.log('%c[v12.0] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+    console.log('%c   1️⃣ 🎵 Tìm Em','color:#94a3b8;font-size:11px');
+    console.log('%c   2️⃣ 🎧 Không Buồn','color:#94a3b8;font-size:11px');
+    console.log('%c   3️⃣ 💜 Chờ Anh','color:#94a3b8;font-size:11px');
+    console.log('%c   🎮 Toggle "TRONG TRẬN": ' + (state.inBattle ? 'BẬT' : 'TẮT'),'color:#fbbf24;font-size:11px');
+  }
+  if(tries > 40) clearInterval(bootTimer);
+}, 300);
+
+/* ═══════════════════════════════════════════════════════
+   17. API TOÀN CỤC
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_V12 = {
+  play: playById,
+  pause: pauseAudio,
+  toggle: toggleAudio,
+  mute: toggleMute,
+  setVolume: setVolume,
+  toggleInBattle: toggleInBattle,
+  list: SONGS.slice(),
+  state: function(){ return Object.assign({}, state); }
+};
+
+console.log('%c[v12.0] 🎵 Script đã nạp','color:#22c55e;font-weight:900');
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 PATCH v12.1 — FINAL FIX
+   - Thanh kéo volume ĐẸP (custom CSS, không dùng browser default)
+   - Nhạc menu → tự tắt khi vào trận (nếu toggle TẮT)
+   - Toggle "TRONG TRẬN" hiển thị rõ ràng trong modal nhạc
+   - Không bug khi kéo, không bị lag
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_V121) return;
+window.__ZNP_V121 = true;
+
+console.log('%c[v12.1] 🚀 Fix thanh kéo + toggle nhạc trong trận...','color:#22c55e;font-weight:900;font-size:14px');
+
+/* ═══════════════════════════════════════════════════════
+   1. CSS CHO THANH KÉO ĐẸP (custom range input)
+   ═══════════════════════════════════════════════════════ */
+if(!document.getElementById('zwp-slider-css')){
+  var st = document.createElement('style');
+  st.id = 'zwp-slider-css';
+  st.textContent = `
+  /* ═══════ VOLUME SLIDER — CUSTOM ĐẸP ═══════ */
+  #zwp-vol-slider{
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 110px !important;
+    height: 6px !important;
+    border-radius: 99px !important;
+    background: linear-gradient(90deg, #22d3ee 0%, #a855f7 100%) !important;
+    outline: none !important;
+    cursor: pointer !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: inset 0 0 6px rgba(0,0,0,0.5), 0 0 10px rgba(34,211,238,0.25);
+    transition: box-shadow 0.2s;
+  }
+  #zwp-vol-slider::-webkit-slider-thumb{
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 16px !important;
+    height: 16px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, #ffffff, #a5f3fc) !important;
+    border: 2px solid #22d3ee !important;
+    cursor: pointer !important;
+    box-shadow:
+      0 0 12px rgba(34,211,238,0.9),
+      0 2px 6px rgba(0,0,0,0.6) !important;
+    transition: transform 0.15s, box-shadow 0.2s !important;
+    margin-top: -5px !important;
+  }
+  #zwp-vol-slider::-webkit-slider-thumb:hover{
+    transform: scale(1.25) !important;
+    box-shadow:
+      0 0 18px rgba(34,211,238,1),
+      0 0 30px rgba(168,85,247,0.7),
+      0 2px 8px rgba(0,0,0,0.7) !important;
+  }
+  #zwp-vol-slider::-webkit-slider-thumb:active{
+    transform: scale(1.15) !important;
+    box-shadow: 0 0 22px rgba(34,211,238,1), 0 0 40px rgba(168,85,247,0.9) !important;
+  }
+  #zwp-vol-slider::-moz-range-thumb{
+    width: 16px !important;
+    height: 16px !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, #ffffff, #a5f3fc) !important;
+    border: 2px solid #22d3ee !important;
+    cursor: pointer !important;
+    box-shadow: 0 0 12px rgba(34,211,238,0.9), 0 2px 6px rgba(0,0,0,0.6) !important;
+    transition: transform 0.15s, box-shadow 0.2s !important;
+  }
+  #zwp-vol-slider::-moz-range-thumb:hover{
+    transform: scale(1.25) !important;
+    box-shadow: 0 0 18px rgba(34,211,238,1), 0 0 30px rgba(168,85,247,0.7) !important;
+  }
+  #zwp-vol-slider::-moz-range-track{
+    height: 6px !important;
+    border-radius: 99px !important;
+    background: linear-gradient(90deg, #22d3ee 0%, #a855f7 100%) !important;
+    box-shadow: inset 0 0 6px rgba(0,0,0,0.5);
+  }
+  #zwp-vol-slider:hover{
+    box-shadow: inset 0 0 6px rgba(0,0,0,0.5), 0 0 16px rgba(34,211,238,0.5);
+  }
+  #zwp-vol-slider:focus{
+    outline: none !important;
+  }
+
+  /* ═══════ NÚT VOLUME ICON ═══════ */
+  #zwp-vol-btn{
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 10px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(168,85,247,0.1)) !important;
+    border: 2px solid rgba(34,211,238,0.55) !important;
+    color: #a5f3fc !important;
+    font-size: 17px !important;
+    cursor: pointer !important;
+    font-family: inherit !important;
+    transition: transform 0.15s, background 0.2s, box-shadow 0.2s !important;
+    flex-shrink: 0 !important;
+    padding: 0 !important;
+  }
+  #zwp-vol-btn:hover{
+    transform: scale(1.08) !important;
+    background: linear-gradient(135deg, rgba(34,211,238,0.3), rgba(168,85,247,0.2)) !important;
+    box-shadow: 0 0 14px rgba(34,211,238,0.6) !important;
+  }
+  #zwp-vol-btn:active{
+    transform: scale(0.95) !important;
+  }
+
+  /* ═══════ TEXT % ═══════ */
+  #zwp-vol-val{
+    color: #22d3ee !important;
+    font-weight: 900 !important;
+    font-size: 12px !important;
+    min-width: 42px !important;
+    text-align: right !important;
+    font-family: ui-monospace, monospace !important;
+    text-shadow: 0 0 10px rgba(34,211,238,0.8) !important;
+    letter-spacing: 0.5px !important;
+    user-select: none !important;
+  }
+
+  /* ═══════ NÚT TOGGLE TRONG TRẬN ═══════ */
+  #zwp-inbattle-btn{
+    height: 38px !important;
+    padding: 0 14px !important;
+    border-radius: 10px !important;
+    font-family: inherit !important;
+    font-weight: 900 !important;
+    font-size: 11px !important;
+    letter-spacing: 0.6px !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    white-space: nowrap !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    flex-shrink: 0 !important;
+  }
+  #zwp-inbattle-btn.on{
+    background: linear-gradient(135deg, #22c55e, #15803d) !important;
+    border: 2px solid #86efac !important;
+    color: #fff !important;
+    box-shadow: 0 0 14px rgba(34,197,94,0.7) !important;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3) !important;
+  }
+  #zwp-inbattle-btn.off{
+    background: rgba(239,68,68,0.15) !important;
+    border: 2px solid rgba(239,68,68,0.55) !important;
+    color: #fca5a5 !important;
+  }
+  #zwp-inbattle-btn:hover{
+    transform: scale(1.04) !important;
+  }
+
+  /* ═══════ FOOTER CĂN LAYOUT ĐẸP ═══════ */
+  #zwp-foot{
+    gap: 10px !important;
+    flex-wrap: wrap !important;
+  }
+  @media (max-width:640px){
+    #zwp-vol-slider{ width: 80px !important; }
+    #zwp-inbattle-btn{ font-size: 9.5px !important; padding: 0 10px !important; height: 34px !important; }
+    #zwp-vol-btn{ width: 34px !important; height: 34px !important; font-size: 15px !important; }
+    #zwp-vol-val{ font-size: 11px !important; min-width: 36px !important; }
+  }
+  `;
+  document.head.appendChild(st);
+}
+
+/* ═══════════════════════════════════════════════════════
+   2. ĐỒNG BỘ VỚI STATE v12.0
+   ═══════════════════════════════════════════════════════ */
+var LS_INBATTLE = 'znp_web_inbattle_v12';
+var inBattle = false;
+try{ inBattle = localStorage.getItem(LS_INBATTLE) === '1'; }catch(e){}
+
+function isPlayingGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i = 0; i < hs.length; i++){
+    if(hs[i].textContent === 'TỬ TRẬN') return false;
+  }
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. UPDATE TOGGLE UI
+   ═══════════════════════════════════════════════════════ */
+function updateInBattleBtn(){
+  var b = document.getElementById('zwp-inbattle-btn');
+  if(!b) return;
+  if(inBattle){
+    b.textContent = '🎮 TRONG TRẬN: BẬT';
+    b.className = 'on';
+  } else {
+    b.textContent = '🎮 TRONG TRẬN: TẮT';
+    b.className = 'off';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   4. PATCH NÚT TOGGLE — dùng event delegation
+   ═══════════════════════════════════════════════════════ */
+document.addEventListener('click', function(e){
+  var b = e.target.closest('#zwp-inbattle-btn');
+  if(!b) return;
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+
+  inBattle = !inBattle;
+  try{ localStorage.setItem(LS_INBATTLE, inBattle ? '1' : '0'); }catch(e){}
+
+  /* Đồng bộ với API nếu có */
+  if(window.__ZNP_V12 && window.__ZNP_V12.toggleInBattle){
+    /* Chỉ gọi nếu state khác */
+    var s = window.__ZNP_V12.state();
+    if(s && s.inBattle !== inBattle){
+      window.__ZNP_V12.toggleInBattle();
+    }
+  } else if(window.__ZNP_WEB && window.__ZNP_WEB.state){
+    var s2 = window.__ZNP_WEB.state();
+    if(s2 && s2.inBattle !== inBattle && window.__ZNP_V12){
+      /* fallback */
+    }
+  }
+
+  updateInBattleBtn();
+
+  if(window.__znpToast){
+    window.__znpToast(
+      inBattle ? '🎮 Nhạc sẽ phát cả trong trận' : '🎮 Nhạc tắt khi vào trận',
+      inBattle ? '#22c55e' : '#f87171',
+      2000
+    );
+  }
+
+  console.log('[v12.1] Toggle in-battle:', inBattle);
+}, true);
+
+/* ═══════════════════════════════════════════════════════
+   5. KHI VÀO TRẬN — TẮT NHẠC NẾU TOGGLE OFF
+   ═══════════════════════════════════════════════════════ */
+var _lastP = null;
+setInterval(function(){
+  var p = isPlayingGame();
+  if(p === _lastP) return;
+  var wasP = _lastP;
+  _lastP = p;
+
+  /* Đọc lại state từ localStorage mỗi lần chuyển */
+  try{ inBattle = localStorage.getItem(LS_INBATTLE) === '1'; }catch(e){}
+
+  if(p && !wasP){
+    /* VÀO TRẬN */
+    if(!inBattle){
+      /* ÉP TẮT NHẠC */
+      var iframe = document.getElementById('zwp-iframe');
+      if(iframe && iframe.parentNode){
+        try{ iframe.src = 'about:blank'; }catch(e){}
+        iframe.parentNode.removeChild(iframe);
+      }
+      /* Update state qua API */
+      try{
+        if(window.__ZNP_V12 && window.__ZNP_V12.state){
+          var s = window.__ZNP_V12.state();
+          if(s && s.playing){
+            /* Gọi pause */
+            if(window.__ZNP_V12.pause) window.__ZNP_V12.pause();
+          }
+        } else if(window.__ZNP_WEB && window.__ZNP_WEB.pause){
+          window.__ZNP_WEB.pause();
+        }
+      }catch(e){}
+
+      console.log('%c[v12.1] 🎮 Vào trận → TẮT nhạc','color:#f87171;font-weight:900;font-size:13px');
+
+      if(window.__znpToast){
+        window.__znpToast('🎮 Vào trận — nhạc đã tắt', '#f87171', 1800);
+      }
+    } else {
+      console.log('%c[v12.1] 🎮 Vào trận → GIỮ nhạc','color:#22c55e;font-weight:900;font-size:13px');
+    }
+
+    /* Ẩn mini player */
+    var mini = document.getElementById('zwp-mini');
+    if(mini){
+      mini.style.opacity = '0';
+      mini.style.pointerEvents = 'none';
+      mini.style.transform = 'translateX(-220px)';
+      mini.style.transition = 'opacity 0.3s, transform 0.3s';
+    }
+    /* Đóng modal */
+    var modal = document.getElementById('zwp-modal');
+    if(modal) modal.classList.remove('open');
+
+  } else if(!p && wasP){
+    /* RA MENU */
+    var mini2 = document.getElementById('zwp-mini');
+    if(mini2){
+      mini2.style.opacity = '1';
+      mini2.style.pointerEvents = 'auto';
+      mini2.style.transform = '';
+    }
+    console.log('%c[v12.1] 🏠 Ra menu — bấm mini player để phát nhạc','color:#22d3ee;font-weight:900;font-size:13px');
+  }
+}, 300);
+
+/* ═══════════════════════════════════════════════════════
+   6. INJECT TOGGLE VÀO MODAL
+   ═══════════════════════════════════════════════════════ */
+function injectInBattleUI(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  var foot = modal.querySelector('#zwp-foot');
+  if(!foot) return;
+
+  /* Nếu đã có thì chỉ update */
+  if(foot.querySelector('#zwp-inbattle-btn')){
+    updateInBattleBtn();
+    return;
+  }
+
+  /* Tạo mới */
+  var b = document.createElement('button');
+  b.id = 'zwp-inbattle-btn';
+  b.type = 'button';
+  b.className = inBattle ? 'on' : 'off';
+  b.textContent = inBattle ? '🎮 TRONG TRẬN: BẬT' : '🎮 TRONG TRẬN: TẮT';
+  b.title = 'Bật: nhạc phát cả khi vào trận đấu · Tắt: chỉ phát ở menu';
+
+  /* Chèn vào đầu footer (bên phải info) */
+  var info = foot.querySelector('.info');
+  if(info && info.nextSibling){
+    foot.insertBefore(b, info.nextSibling);
+  } else {
+    foot.appendChild(b);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   7. ĐẢM BẢO SLIDER CSS ĐƯỢC ÁP DỤNG
+   ═══════════════════════════════════════════════════════ */
+function enforceSliderStyle(){
+  var s = document.getElementById('zwp-vol-slider');
+  if(!s) return;
+  /* Force re-apply CSS mỗi khi cần */
+  s.style.webkitAppearance = 'none';
+  s.style.appearance = 'none';
+  s.style.background = 'linear-gradient(90deg, #22d3ee 0%, #a855f7 100%)';
+  s.style.height = '6px';
+  s.style.borderRadius = '99px';
+}
+
+/* ═══════════════════════════════════════════════════════
+   8. POLL — cập nhật UI liên tục
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  injectInBattleUI();
+  enforceSliderStyle();
+
+  /* Đồng bộ toggle từ localStorage (nếu user đổi ở nơi khác) */
+  var cur;
+  try{ cur = localStorage.getItem(LS_INBATTLE) === '1'; }catch(e){ cur = inBattle; }
+  if(cur !== inBattle){
+    inBattle = cur;
+    updateInBattleBtn();
+  }
+}, 500);
+
+/* ═══════════════════════════════════════════════════════
+   9. OBSERVER cho modal mở
+   ═══════════════════════════════════════════════════════ */
+function bootMO(){
+  if(!document.body){ setTimeout(bootMO, 200); return; }
+  var mo = new MutationObserver(function(){
+    if(document.getElementById('zwp-modal')){
+      clearTimeout(mo._t);
+      mo._t = setTimeout(function(){
+        injectInBattleUI();
+        enforceSliderStyle();
+      }, 60);
+    }
+  });
+  mo.observe(document.body, { childList:true, subtree:true });
+}
+bootMO();
+
+/* ═══════════════════════════════════════════════════════
+   10. API TOÀN CỤC
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_V121 = {
+  isInBattle: function(){ return inBattle; },
+  setInBattle: function(v){
+    inBattle = !!v;
+    try{ localStorage.setItem(LS_INBATTLE, inBattle ? '1' : '0'); }catch(e){}
+    updateInBattleBtn();
+  },
+  getVolume: function(){
+    if(window.__ZNP_V12 && window.__ZNP_V12.state) return window.__ZNP_V12.state().volume;
+    return 100;
+  }
+};
+
+console.log('%c[v12.1] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+console.log('%c   🔊 Thanh kéo volume đã được style lại đẹp','color:#22d3ee;font-size:11px');
+console.log('%c   🎮 Vào trận → tự tắt nhạc (nếu toggle TẮT)','color:#f87171;font-size:11px');
+console.log('%c   🎵 Toggle "TRONG TRẬN" trong modal nhạc','color:#fbbf24;font-size:11px');
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 PATCH v12.2 — NÚT BẤM VOLUME + SETTING TRONG CÀI ĐẶT
+   - XÓA thanh kéo slider → thay bằng 3 nút: −10 / Mute / +10
+   - THÊM toggle "Nhạc khi vào trận" vào CÀI ĐẶT HỆ THỐNG
+   - Hiển thị volume hiện tại rõ ràng
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_V122) return;
+window.__ZNP_V122 = true;
+
+console.log('%c[v12.2] 🚀 Thay slider → nút bấm + setting game...','color:#22c55e;font-weight:900;font-size:14px');
+
+/* ═══════════════════════════════════════════════════════
+   1. XÓA SLIDER KHỎI DOM + CSS CŨ
+   ═══════════════════════════════════════════════════════ */
+function removeSlider(){
+  var s = document.getElementById('zwp-vol-slider');
+  if(s && s.parentNode) s.parentNode.removeChild(s);
+}
+removeSlider();
+setInterval(removeSlider, 500);
+
+/* ═══════════════════════════════════════════════════════
+   2. CSS CHO NÚT BẤM VOLUME
+   ═══════════════════════════════════════════════════════ */
+if(!document.getElementById('zwp-btnvol-css')){
+  var st = document.createElement('style');
+  st.id = 'zwp-btnvol-css';
+  st.textContent = `
+  /* ═══════ NHÓM NÚT VOLUME ═══════ */
+  #zwp-btnvol-group{
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    background: rgba(10,15,29,0.7) !important;
+    padding: 4px 6px !important;
+    border-radius: 12px !important;
+    border: 1.5px solid rgba(34,211,238,0.35) !important;
+    flex-shrink: 0 !important;
+    box-shadow: inset 0 0 12px rgba(34,211,238,0.08);
+  }
+  .zwp-vbtn{
+    width: 34px !important;
+    height: 34px !important;
+    border-radius: 9px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: linear-gradient(135deg, rgba(34,211,238,0.15), rgba(168,85,247,0.1)) !important;
+    border: 1.5px solid rgba(34,211,238,0.5) !important;
+    color: #a5f3fc !important;
+    font-size: 15px !important;
+    font-weight: 900 !important;
+    cursor: pointer !important;
+    font-family: inherit !important;
+    transition: transform 0.15s, background 0.2s, box-shadow 0.2s !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -webkit-tap-highlight-color: transparent !important;
+    touch-action: manipulation !important;
+    flex-shrink: 0 !important;
+  }
+  .zwp-vbtn:hover{
+    transform: scale(1.1) !important;
+    background: linear-gradient(135deg, rgba(34,211,238,0.3), rgba(168,85,247,0.2)) !important;
+    box-shadow: 0 0 14px rgba(34,211,238,0.7) !important;
+  }
+  .zwp-vbtn:active{
+    transform: scale(0.92) !important;
+  }
+  .zwp-vbtn.mute{
+    background: linear-gradient(135deg, rgba(239,68,68,0.2), rgba(185,28,28,0.15)) !important;
+    border-color: rgba(239,68,68,0.55) !important;
+    color: #fca5a5 !important;
+  }
+  .zwp-vbtn.mute:hover{
+    box-shadow: 0 0 14px rgba(239,68,68,0.7) !important;
+  }
+  .zwp-vbtn.on{
+    background: linear-gradient(135deg, rgba(34,197,94,0.25), rgba(22,163,74,0.15)) !important;
+    border-color: rgba(34,197,94,0.6) !important;
+    color: #86efac !important;
+  }
+  .zwp-vbtn.on:hover{
+    box-shadow: 0 0 14px rgba(34,197,94,0.7) !important;
+  }
+
+  /* Volume display */
+  #zwp-vol-val{
+    color: #22d3ee !important;
+    font-weight: 900 !important;
+    font-size: 13px !important;
+    min-width: 48px !important;
+    text-align: center !important;
+    font-family: ui-monospace, monospace !important;
+    text-shadow: 0 0 10px rgba(34,211,238,0.9) !important;
+    letter-spacing: 0.5px !important;
+    user-select: none !important;
+    padding: 0 4px !important;
+  }
+
+  /* ═══════ NÚT TOGGLE TRONG TRẬN ═══════ */
+  #zwp-inbattle-btn{
+    height: 38px !important;
+    padding: 0 14px !important;
+    border-radius: 10px !important;
+    font-family: inherit !important;
+    font-weight: 900 !important;
+    font-size: 11px !important;
+    letter-spacing: 0.6px !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    white-space: nowrap !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    flex-shrink: 0 !important;
+  }
+  #zwp-inbattle-btn.on{
+    background: linear-gradient(135deg, #22c55e, #15803d) !important;
+    border: 2px solid #86efac !important;
+    color: #fff !important;
+    box-shadow: 0 0 14px rgba(34,197,94,0.7) !important;
+  }
+  #zwp-inbattle-btn.off{
+    background: rgba(239,68,68,0.15) !important;
+    border: 2px solid rgba(239,68,68,0.55) !important;
+    color: #fca5a5 !important;
+  }
+  #zwp-inbattle-btn:hover{
+    transform: scale(1.04) !important;
+  }
+
+  /* ═══════ SETTING TRONG MODAL CÀI ĐẶT GAME ═══════ */
+  #znp-music-setting{
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 12px 0 !important;
+    border-bottom: 1px solid rgba(255,255,255,0.05) !important;
+    gap: 12px !important;
+    margin-top: 4px;
+  }
+  #znp-music-setting .lbl{
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+  #znp-music-setting .lbl .t{
+    color: #fff !important;
+    font-weight: 900 !important;
+    font-size: 13px !important;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #znp-music-setting .lbl .d{
+    color: #94a3b8 !important;
+    font-size: 10.5px !important;
+    margin-top: 3px !important;
+    line-height: 1.4;
+  }
+  #znp-music-setting .sw{
+    flex-shrink: 0 !important;
+    padding: 8px 16px !important;
+    border-radius: 10px !important;
+    font-weight: 900 !important;
+    font-size: 11px !important;
+    cursor: pointer !important;
+    font-family: inherit !important;
+    border: 2px solid !important;
+    transition: all 0.2s !important;
+    white-space: nowrap !important;
+    letter-spacing: 0.6px !important;
+  }
+  #znp-music-setting .sw.on{
+    background: linear-gradient(135deg, #22c55e, #15803d) !important;
+    border-color: #86efac !important;
+    color: #fff !important;
+    box-shadow: 0 0 14px rgba(34,197,94,0.6) !important;
+  }
+  #znp-music-setting .sw.off{
+    background: rgba(239,68,68,0.15) !important;
+    border-color: rgba(239,68,68,0.55) !important;
+    color: #fca5a5 !important;
+  }
+  #znp-music-setting .sw:hover{
+    transform: scale(1.05) !important;
+  }
+  `;
+  document.head.appendChild(st);
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. VOLUME STATE — ĐỒNG BỘ VỚI v12.0
+   ═══════════════════════════════════════════════════════ */
+function getVolume(){
+  if(window.__ZNP_V12 && window.__ZNP_V12.state){
+    var s = window.__ZNP_V12.state();
+    return s ? s.volume : 100;
+  }
+  return 100;
+}
+function getMuted(){
+  if(window.__ZNP_V12 && window.__ZNP_V12.state){
+    var s = window.__ZNP_V12.state();
+    return s ? s.muted : false;
+  }
+  return false;
+}
+function setVol(v){
+  v = Math.max(0, Math.min(100, v));
+  if(window.__ZNP_V12 && window.__ZNP_V12.setVolume){
+    window.__ZNP_V12.setVolume(v);
+  } else if(window.__ZNP_WEB && window.__ZNP_WEB.setVolume){
+    window.__ZNP_WEB.setVolume(v);
+  }
+  updateBtnVolUI();
+}
+function toggleMute(){
+  if(window.__ZNP_V12 && window.__ZNP_V12.mute){
+    window.__ZNP_V12.mute();
+  }
+  updateBtnVolUI();
+}
+
+/* ═══════════════════════════════════════════════════════
+   4. UPDATE UI NÚT VOLUME
+   ═══════════════════════════════════════════════════════ */
+function updateBtnVolUI(){
+  var valEl = document.getElementById('zwp-vol-val');
+  var muteBtn = document.getElementById('zwp-vbtn-mute');
+  var v = getVolume();
+  var muted = getMuted();
+
+  if(valEl){
+    valEl.textContent = (muted ? '🔇 ' : '') + v + '%';
+    valEl.style.color = muted ? '#fca5a5' : (v < 30 ? '#fbbf24' : '#22d3ee');
+  }
+  if(muteBtn){
+    if(muted || v === 0){
+      muteBtn.textContent = '🔇';
+      muteBtn.classList.add('mute');
+      muteBtn.classList.remove('on');
+    } else if(v < 50){
+      muteBtn.textContent = '🔉';
+      muteBtn.classList.remove('mute', 'on');
+    } else {
+      muteBtn.textContent = '🔊';
+      muteBtn.classList.remove('mute');
+      muteBtn.classList.add('on');
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   5. INJECT NÚT VOLUME VÀO MODAL NHẠC
+   ═══════════════════════════════════════════════════════ */
+function injectBtnVol(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  var foot = modal.querySelector('#zwp-foot');
+  if(!foot) return;
+
+  /* Nếu đã có nhóm nút → update + return */
+  if(document.getElementById('zwp-btnvol-group')){
+    updateBtnVolUI();
+    return;
+  }
+
+  /* Xóa wrap cũ nếu còn */
+  var oldWrap = modal.querySelector('#zwp-vol-wrap');
+  if(oldWrap) oldWrap.remove();
+
+  /* Xóa slider cũ nếu còn */
+  var oldSlider = modal.querySelector('#zwp-vol-slider');
+  if(oldSlider) oldSlider.remove();
+
+  /* Tạo nhóm nút mới */
+  var group = document.createElement('div');
+  group.id = 'zwp-btnvol-group';
+  group.innerHTML =
+    /* Giảm -10 */
+    '<button type="button" class="zwp-vbtn" id="zwp-vbtn-down" title="Giảm 10%">−</button>' +
+    /* Mute toggle */
+    '<button type="button" class="zwp-vbtn on" id="zwp-vbtn-mute" title="Bật/Tắt tiếng">🔊</button>' +
+    /* Volume display */
+    '<span id="zwp-vol-val">100%</span>' +
+    /* Tăng +10 */
+    '<button type="button" class="zwp-vbtn" id="zwp-vbtn-up" title="Tăng 10%">+</button>';
+
+  /* Chèn vào footer (sau nút toggle in-battle nếu có) */
+  var inBattleBtn = foot.querySelector('#zwp-inbattle-btn');
+  if(inBattleBtn && inBattleBtn.nextSibling){
+    foot.insertBefore(group, inBattleBtn.nextSibling);
+  } else {
+    foot.appendChild(group);
+  }
+
+  /* Bind sự kiện */
+  group.querySelector('#zwp-vbtn-down').onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    var v = getVolume();
+    setVol(v - 10);
+  };
+  group.querySelector('#zwp-vbtn-up').onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    var v = getVolume();
+    setVol(v + 10);
+  };
+  group.querySelector('#zwp-vbtn-mute').onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    toggleMute();
+  };
+
+  updateBtnVolUI();
+  console.log('[v12.2] 🎚️ Đã chèn nút volume');
+}
+
+/* ═══════════════════════════════════════════════════════
+   6. THÊM SETTING NHẠC VÀO MODAL CÀI ĐẶT GAME
+   ═══════════════════════════════════════════════════════ */
+var LS_INBATTLE = 'znp_web_inbattle_v12';
+
+function getInBattle(){
+  try{ return localStorage.getItem(LS_INBATTLE) === '1'; }catch(e){ return false; }
+}
+function setInBattle(v){
+  try{ localStorage.setItem(LS_INBATTLE, v ? '1' : '0'); }catch(e){}
+  /* Đồng bộ với v12.0 nếu state khác */
+  if(window.__ZNP_V12 && window.__ZNP_V12.toggleInBattle){
+    var s = window.__ZNP_V12.state();
+    if(s && s.inBattle !== v) window.__ZNP_V12.toggleInBattle();
+  }
+  updateInBattleBtn();
+  updateSettingsToggle();
+}
+
+function updateSettingsToggle(){
+  var sw = document.querySelector('#znp-music-setting .sw');
+  if(!sw) return;
+  var on = getInBattle();
+  if(on){
+    sw.textContent = '✓ ĐANG BẬT';
+    sw.className = 'sw on';
+  } else {
+    sw.textContent = '✕ ĐANG TẮT';
+    sw.className = 'sw off';
+  }
+}
+
+function updateInBattleBtn(){
+  var b = document.getElementById('zwp-inbattle-btn');
+  if(!b) return;
+  var on = getInBattle();
+  b.textContent = on ? '🎮 TRONG TRẬN: BẬT' : '🎮 TRONG TRẬN: TẮT';
+  b.className = on ? 'on' : 'off';
+}
+
+function injectGameSetting(){
+  /* Tìm modal cài đặt — có tiêu đề "CÀI ĐẶT HỆ THỐNG" */
+  var allH2 = document.querySelectorAll('h2');
+  var settingModal = null;
+  for(var i = 0; i < allH2.length; i++){
+    var t = allH2[i].textContent || '';
+    if(t.indexOf('CÀI ĐẶT HỆ THỐNG') >= 0){
+      /* Modal cha = tổ tiên có overflow */
+      settingModal = allH2[i].closest('div[style*="overflow-y"]') ||
+                     allH2[i].closest('div[style*="max-h"]') ||
+                     allH2[i].parentElement.parentElement.parentElement;
+      break;
+    }
+  }
+  if(!settingModal) return;
+
+  /* Đã có thì update */
+  if(settingModal.querySelector('#znp-music-setting')){
+    updateSettingsToggle();
+    return;
+  }
+
+  /* Tìm nút "LƯU & ĐÓNG" để chèn trước */
+  var buttons = settingModal.querySelectorAll('button');
+  var saveBtn = null;
+  for(var j = 0; j < buttons.length; j++){
+    var bt = buttons[j].textContent || '';
+    if(bt.indexOf('LƯU') >= 0 && bt.indexOf('ĐÓNG') >= 0){
+      saveBtn = buttons[j];
+      break;
+    }
+  }
+  if(!saveBtn) return;
+
+  /* Tạo setting row */
+  var row = document.createElement('div');
+  row.id = 'znp-music-setting';
+  row.innerHTML =
+    '<div class="lbl">' +
+      '<div class="t">🎵 Nhạc khi vào trận</div>' +
+      '<div class="d">BẬT: nhạc vẫn phát khi vào trận đấu · TẮT: chỉ phát ở menu chính</div>' +
+    '</div>' +
+    '<button class="sw ' + (getInBattle() ? 'on' : 'off') + '" type="button">' +
+      (getInBattle() ? '✓ ĐANG BẬT' : '✕ ĐANG TẮT') +
+    '</button>';
+
+  /* Chèn trước nút LƯU */
+  var parent = saveBtn.parentElement;
+  if(parent){
+    parent.insertBefore(row, saveBtn);
+  } else {
+    settingModal.appendChild(row);
+  }
+
+  /* Bind */
+  row.querySelector('.sw').onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    setInBattle(!getInBattle());
+  };
+
+  console.log('[v12.2] ⚙️ Đã chèn setting nhạc vào CÀI ĐẶT');
+}
+
+/* ═══════════════════════════════════════════════════════
+   7. INJECT TOGGLE TRONG MODAL NHẠC
+   ═══════════════════════════════════════════════════════ */
+function injectInBattleUI(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  var foot = modal.querySelector('#zwp-foot');
+  if(!foot) return;
+
+  if(foot.querySelector('#zwp-inbattle-btn')){
+    updateInBattleBtn();
+    return;
+  }
+
+  var b = document.createElement('button');
+  b.id = 'zwp-inbattle-btn';
+  b.type = 'button';
+  b.className = getInBattle() ? 'on' : 'off';
+  b.textContent = getInBattle() ? '🎮 TRONG TRẬN: BẬT' : '🎮 TRONG TRẬN: TẮT';
+  b.title = 'BẬT: nhạc phát cả trong trận · TẮT: chỉ phát ở menu';
+
+  var info = foot.querySelector('.info');
+  if(info && info.nextSibling){
+    foot.insertBefore(b, info.nextSibling);
+  } else {
+    foot.appendChild(b);
+  }
+
+  b.onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    setInBattle(!getInBattle());
+    if(window.__znpToast){
+      window.__znpToast(
+        getInBattle() ? '🎮 Nhạc sẽ phát cả khi vào trận' : '🎮 Nhạc tắt khi vào trận',
+        getInBattle() ? '#22c55e' : '#f87171',
+        2200
+      );
+    }
+  };
+}
+
+/* ═══════════════════════════════════════════════════════
+   8. XỬ LÝ VÀO TRẬN — TẮT NHẠC NẾU TOGGLE OFF
+   ═══════════════════════════════════════════════════════ */
+function isPlayingGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i = 0; i < hs.length; i++){
+    if(hs[i].textContent === 'TỬ TRẬN') return false;
+  }
+  return true;
+}
+
+var _lastP = null;
+setInterval(function(){
+  var p = isPlayingGame();
+  if(p === _lastP) return;
+  var wasP = _lastP;
+  _lastP = p;
+
+  if(p && !wasP){
+    /* VÀO TRẬN */
+    if(!getInBattle()){
+      /* ÉP TẮT NHẠC */
+      var iframe = document.getElementById('zwp-iframe');
+      if(iframe && iframe.parentNode){
+        try{ iframe.src = 'about:blank'; }catch(e){}
+        iframe.parentNode.removeChild(iframe);
+      }
+      try{
+        if(window.__ZNP_V12 && window.__ZNP_V12.pause){
+          var s = window.__ZNP_V12.state();
+          if(s && s.playing) window.__ZNP_V12.pause();
+        }
+      }catch(e){}
+
+      console.log('%c[v12.2] 🎮 Vào trận → TẮT nhạc','color:#f87171;font-weight:900;font-size:13px');
+      if(window.__znpToast){
+        window.__znpToast('🎮 Vào trận — nhạc đã tắt', '#f87171', 1800);
+      }
+    } else {
+      console.log('%c[v12.2] 🎮 Vào trận → GIỮ nhạc','color:#22c55e;font-weight:900;font-size:13px');
+    }
+
+    /* Ẩn mini player + đóng modal */
+    var mini = document.getElementById('zwp-mini');
+    if(mini){
+      mini.style.opacity = '0';
+      mini.style.pointerEvents = 'none';
+      mini.style.transform = 'translateX(-220px)';
+      mini.style.transition = 'opacity 0.3s, transform 0.3s';
+    }
+    var modal = document.getElementById('zwp-modal');
+    if(modal) modal.classList.remove('open');
+
+  } else if(!p && wasP){
+    /* RA MENU */
+    var mini2 = document.getElementById('zwp-mini');
+    if(mini2){
+      mini2.style.opacity = '1';
+      mini2.style.pointerEvents = 'auto';
+      mini2.style.transform = '';
+    }
+    console.log('%c[v12.2] 🏠 Ra menu','color:#22d3ee;font-weight:900;font-size:13px');
+  }
+}, 300);
+
+/* ═══════════════════════════════════════════════════════
+   9. POLL — INJECT UI LIÊN TỤC
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  /* Modal nhạc mở → chèn nút volume + toggle */
+  if(document.getElementById('zwp-modal')){
+    injectInBattleUI();
+    injectBtnVol();
+  }
+  /* Modal cài đặt mở → chèn setting */
+  if(document.querySelectorAll('h2').length){
+    injectGameSetting();
+  }
+}, 400);
+
+/* ═══════════════════════════════════════════════════════
+   10. MUTATIONOBSERVER
+   ═══════════════════════════════════════════════════════ */
+function bootMO(){
+  if(!document.body){ setTimeout(bootMO, 200); return; }
+  var mo = new MutationObserver(function(){
+    clearTimeout(mo._t);
+    mo._t = setTimeout(function(){
+      if(document.getElementById('zwp-modal')){
+        injectInBattleUI();
+        injectBtnVol();
+      }
+      injectGameSetting();
+    }, 80);
+  });
+  mo.observe(document.body, { childList:true, subtree:true });
+}
+bootMO();
+
+/* ═══════════════════════════════════════════════════════
+   11. API TOÀN CỤC
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_V122 = {
+  getVolume: getVolume,
+  setVolume: setVol,
+  toggleMute: toggleMute,
+  isInBattle: getInBattle,
+  setInBattle: setInBattle
+};
+
+console.log('%c[v12.2] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+console.log('%c   ❌ Đã xóa slider, thay bằng nút − 🔊 +','color:#22d3ee;font-size:11px');
+console.log('%c   ⚙️ Đã thêm setting "Nhạc khi vào trận" trong CÀI ĐẶT','color:#fbbf24;font-size:11px');
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 PATCH v13.0 — FIX TRIỆT ĐỂ
+   ❌ XÓA HOÀN TOÀN THANH KÉO (không chỉ ẩn)
+   ✅ NHẠC PHÁT XUYÊN SUỐT KHI VÀO TRẬN (toggle BẬT)
+   ✅ KHÔNG CHO PATCH CŨ XÓA IFRAME KHI TOGGLE BẬT
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_V130) return;
+window.__ZNP_V130 = true;
+
+console.log('%c[v13.0] 🚀 Fix triệt để...','color:#22c55e;font-weight:900;font-size:14px');
+
+var LS_INBATTLE = 'znp_web_inbattle_v12';
+
+function getInBattle(){
+  try{ return localStorage.getItem(LS_INBATTLE) === '1'; }catch(e){ return false; }
+}
+function isPlayingGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i = 0; i < hs.length; i++){
+    if(hs[i].textContent === 'TỬ TRẬN') return false;
+  }
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════
+   1. ❌ XÓA TRIỆT ĐỂ MỌI SLIDER — CHẶN MỌI NGUỒN TẠO LẠI
+   ═══════════════════════════════════════════════════════ */
+(function killSlider(){
+  /* Chặn appendChild tạo slider */
+  var origAppend = Node.prototype.appendChild;
+  Node.prototype.appendChild = function(child){
+    if(child && child.id === 'zwp-vol-slider'){
+      console.log('[v13.0] 🚫 Chặn tạo slider');
+      return child;
+    }
+    return origAppend.apply(this, arguments);
+  };
+
+  /* Chặn insertBefore tạo slider */
+  var origInsert = Node.prototype.insertBefore;
+  Node.prototype.insertBefore = function(newNode, refNode){
+    if(newNode && newNode.id === 'zwp-vol-slider'){
+      console.log('[v13.0] 🚫 Chặn chèn slider');
+      return newNode;
+    }
+    return origInsert.apply(this, arguments);
+  };
+
+  /* Xóa triệt để mọi lúc */
+  function killNow(){
+    var sliders = document.querySelectorAll('#zwp-vol-slider');
+    sliders.forEach(function(s){
+      if(s.parentNode) s.parentNode.removeChild(s);
+    });
+    /* Xóa cả wrap cũ chứa slider */
+    var oldWrap = document.getElementById('zwp-vol-wrap');
+    if(oldWrap){
+      /* Nhưng giữ lại nút volume nếu có */
+      var btnGroup = oldWrap.querySelector('#zwp-btnvol-group');
+      if(!btnGroup && oldWrap.parentNode){
+        oldWrap.remove();
+      }
+    }
+  }
+  killNow();
+  setInterval(killNow, 300);
+})();
+
+/* ═══════════════════════════════════════════════════════
+   2. CSS CHO NÚT BẤM VOLUME (nếu chưa có)
+   ═══════════════════════════════════════════════════════ */
+if(!document.getElementById('zwp-btnvol-css-v13')){
+  var st = document.createElement('style');
+  st.id = 'zwp-btnvol-css-v13';
+  st.textContent = `
+  #zwp-btnvol-group{
+    display:flex !important; align-items:center !important; gap:5px !important;
+    background:rgba(10,15,29,0.7) !important; padding:4px 6px !important;
+    border-radius:12px !important; border:1.5px solid rgba(34,211,238,0.35) !important;
+    flex-shrink:0 !important; box-shadow:inset 0 0 12px rgba(34,211,238,0.08);
+  }
+  .zwp-vbtn{
+    width:34px !important; height:34px !important; border-radius:9px !important;
+    display:flex !important; align-items:center !important; justify-content:center !important;
+    background:linear-gradient(135deg, rgba(34,211,238,0.15), rgba(168,85,247,0.1)) !important;
+    border:1.5px solid rgba(34,211,238,0.5) !important;
+    color:#a5f3fc !important; font-size:16px !important; font-weight:900 !important;
+    cursor:pointer !important; font-family:inherit !important;
+    transition:transform 0.15s, background 0.2s, box-shadow 0.2s !important;
+    padding:0 !important; margin:0 !important;
+    user-select:none !important; -webkit-user-select:none !important;
+    -webkit-tap-highlight-color:transparent !important;
+    touch-action:manipulation !important; flex-shrink:0 !important;
+  }
+  .zwp-vbtn:hover{ transform:scale(1.1) !important; background:linear-gradient(135deg, rgba(34,211,238,0.3), rgba(168,85,247,0.2)) !important; box-shadow:0 0 14px rgba(34,211,238,0.7) !important; }
+  .zwp-vbtn:active{ transform:scale(0.92) !important; }
+  .zwp-vbtn.mute{ background:linear-gradient(135deg, rgba(239,68,68,0.2), rgba(185,28,28,0.15)) !important; border-color:rgba(239,68,68,0.55) !important; color:#fca5a5 !important; }
+  .zwp-vbtn.mute:hover{ box-shadow:0 0 14px rgba(239,68,68,0.7) !important; }
+  .zwp-vbtn.on{ background:linear-gradient(135deg, rgba(34,197,94,0.25), rgba(22,163,74,0.15)) !important; border-color:rgba(34,197,94,0.6) !important; color:#86efac !important; }
+  #zwp-vol-val{
+    color:#22d3ee !important; font-weight:900 !important; font-size:13px !important;
+    min-width:48px !important; text-align:center !important;
+    font-family:ui-monospace,monospace !important;
+    text-shadow:0 0 10px rgba(34,211,238,0.9) !important;
+    padding:0 4px !important; user-select:none !important;
+  }
+  `;
+  document.head.appendChild(st);
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. CHẶN XÓA IFRAME KHI TOGGLE BẬT
+   ═══════════════════════════════════════════════════════ */
+(function protectIframe(){
+  var origRemove = Node.prototype.removeChild;
+  Node.prototype.removeChild = function(child){
+    /* Nếu đang vào trận + toggle BẬT → không cho xóa iframe nhạc */
+    if(child && child.id === 'zwp-iframe'){
+      if(getInBattle() && isPlayingGame()){
+        console.log('%c[v13.0] 🛡️ Chặn xóa iframe (đang trong trận + toggle BẬT)','color:#22c55e;font-weight:900');
+        return child;
+      }
+    }
+    /* Chặn xóa modal nhạc — chỉ ẩn */
+    if(child && child.id === 'zwp-modal'){
+      child.style.transform = 'translateX(-99999px)';
+      child.style.opacity = '0';
+      child.style.pointerEvents = 'none';
+      return child;
+    }
+    return origRemove.apply(this, arguments);
+  };
+})();
+
+/* ═══════════════════════════════════════════════════════
+   4. VOLUME API
+   ═══════════════════════════════════════════════════════ */
+function getVolume(){
+  if(window.__ZNP_V12 && window.__ZNP_V12.state){
+    var s = window.__ZNP_V12.state();
+    return s ? s.volume : 100;
+  }
+  return 100;
+}
+function getMuted(){
+  if(window.__ZNP_V12 && window.__ZNP_V12.state){
+    var s = window.__ZNP_V12.state();
+    return s ? s.muted : false;
+  }
+  return false;
+}
+function setVol(v){
+  v = Math.max(0, Math.min(100, v));
+  if(window.__ZNP_V12 && window.__ZNP_V12.setVolume) window.__ZNP_V12.setVolume(v);
+  else if(window.__ZNP_WEB && window.__ZNP_WEB.setVolume) window.__ZNP_WEB.setVolume(v);
+  updateBtnVolUI();
+}
+function toggleMute(){
+  if(window.__ZNP_V12 && window.__ZNP_V12.mute) window.__ZNP_V12.mute();
+  updateBtnVolUI();
+}
+function updateBtnVolUI(){
+  var valEl = document.getElementById('zwp-vol-val');
+  var muteBtn = document.getElementById('zwp-vbtn-mute');
+  var v = getVolume();
+  var muted = getMuted();
+  if(valEl){
+    valEl.textContent = (muted ? '🔇 ' : '') + v + '%';
+    valEl.style.color = muted ? '#fca5a5' : (v < 30 ? '#fbbf24' : '#22d3ee');
+  }
+  if(muteBtn){
+    if(muted || v === 0){ muteBtn.textContent = '🔇'; muteBtn.className = 'zwp-vbtn mute'; }
+    else if(v < 50){ muteBtn.textContent = '🔉'; muteBtn.className = 'zwp-vbtn'; }
+    else { muteBtn.textContent = '🔊'; muteBtn.className = 'zwp-vbtn on'; }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   5. CHÈN NHÓM NÚT VOLUME VÀO MODAL NHẠC
+   ═══════════════════════════════════════════════════════ */
+function injectBtnVol(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  var foot = modal.querySelector('#zwp-foot');
+  if(!foot) return;
+
+  if(document.getElementById('zwp-btnvol-group')){
+    updateBtnVolUI();
+    return;
+  }
+
+  var group = document.createElement('div');
+  group.id = 'zwp-btnvol-group';
+  group.innerHTML =
+    '<button type="button" class="zwp-vbtn" id="zwp-vbtn-down">−</button>' +
+    '<button type="button" class="zwp-vbtn on" id="zwp-vbtn-mute">🔊</button>' +
+    '<span id="zwp-vol-val">100%</span>' +
+    '<button type="button" class="zwp-vbtn" id="zwp-vbtn-up">+</button>';
+
+  /* Chèn trước nút "trong trận" nếu có */
+  var inBattleBtn = foot.querySelector('#zwp-inbattle-btn');
+  if(inBattleBtn){
+    foot.insertBefore(group, inBattleBtn);
+  } else {
+    foot.appendChild(group);
+  }
+
+  group.querySelector('#zwp-vbtn-down').onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    setVol(getVolume() - 10);
+  };
+  group.querySelector('#zwp-vbtn-up').onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    setVol(getVolume() + 10);
+  };
+  group.querySelector('#zwp-vbtn-mute').onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    toggleMute();
+  };
+  updateBtnVolUI();
+}
+
+/* ═══════════════════════════════════════════════════════
+   6. TẠO LẠI IFRAME KHI VÀO TRẬN (nếu toggle BẬT)
+   ═══════════════════════════════════════════════════════ */
+function ensureIframePlaying(){
+  var body = document.getElementById('zwp-body');
+  if(!body) return;
+
+  var iframe = document.getElementById('zwp-iframe');
+  if(iframe) return; /* đã có */
+
+  /* Tìm bài hiện tại */
+  var song = null;
+  if(window.__ZNP_V12 && window.__ZNP_V12.state && window.__ZNP_V12.list){
+    var s = window.__ZNP_V12.state();
+    var list = window.__ZNP_V12.list();
+    for(var i = 0; i < list.length; i++){
+      if(list[i].id === s.currentId){ song = list[i]; break; }
+    }
+  }
+  if(!song && window.__ZNP_WEB && window.__ZNP_WEB.list){
+    var list2 = window.__ZNP_WEB.list();
+    if(list2.length) song = list2[0];
+  }
+  if(!song) return;
+
+  /* Tạo iframe mới */
+  var newIf = document.createElement('iframe');
+  newIf.id = 'zwp-iframe';
+  newIf.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  newIf.allowFullscreen = true;
+  newIf.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#000;';
+  newIf.dataset.songId = song.id;
+  newIf.src = song.url;
+  body.appendChild(newIf);
+
+  /* Boost volume sau khi load */
+  setTimeout(function(){ applyVol(); }, 800);
+  setTimeout(function(){ applyVol(); }, 2000);
+  setTimeout(function(){ applyVol(); }, 3500);
+
+  console.log('%c[v13.0] ✅ Đã tạo lại iframe nhạc','color:#22c55e;font-weight:900;font-size:13px');
+}
+
+function applyVol(){
+  var iframe = document.getElementById('zwp-iframe');
+  if(!iframe) return;
+  var v = getMuted() ? 0 : getVolume();
+  var msgs = [
+    { event:'command', func:'setVolume', args:[v] },
+    { type:'setVolume', value: v/100 },
+    { volume: v/100 }
+  ];
+  msgs.forEach(function(m){
+    try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+    try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   7. WATCH — VÀO TRẬN / RA MENU
+   ═══════════════════════════════════════════════════════ */
+var _lastP = null;
+setInterval(function(){
+  var p = isPlayingGame();
+  if(p === _lastP) return;
+  var wasP = _lastP;
+  _lastP = p;
+
+  if(p && !wasP){
+    /* VÀO TRẬN */
+    if(getInBattle()){
+      /* BẬT → đảm bảo nhạc tiếp tục phát */
+      setTimeout(ensureIframePlaying, 300);
+      setTimeout(applyVol, 1500);
+      setTimeout(applyVol, 3000);
+      console.log('%c[v13.0] 🎮 Vào trận → GIỮ nhạc (đang phát nền)','color:#22c55e;font-weight:900;font-size:13px');
+      if(window.__znpToast) window.__znpToast('🎮 Nhạc tiếp tục phát trong trận', '#22c55e', 2000);
+    } else {
+      /* TẮT → xóa iframe */
+      var iframe = document.getElementById('zwp-iframe');
+      if(iframe && iframe.parentNode){
+        try{ iframe.src = 'about:blank'; }catch(e){}
+        iframe.parentNode.removeChild(iframe);
+      }
+      try{
+        if(window.__ZNP_V12 && window.__ZNP_V12.pause){
+          var s = window.__ZNP_V12.state();
+          if(s && s.playing) window.__ZNP_V12.pause();
+        }
+      }catch(e){}
+      console.log('%c[v13.0] 🎮 Vào trận → TẮT nhạc','color:#f87171;font-weight:900;font-size:13px');
+    }
+
+    /* Ẩn mini player */
+    var mini = document.getElementById('zwp-mini');
+    if(mini){
+      mini.style.opacity = '0';
+      mini.style.pointerEvents = 'none';
+      mini.style.transform = 'translateX(-220px)';
+      mini.style.transition = 'opacity 0.3s, transform 0.3s';
+    }
+    var modal = document.getElementById('zwp-modal');
+    if(modal){
+      modal.classList.remove('open');
+      modal.style.transform = 'translateX(-99999px)';
+      modal.style.opacity = '0';
+      modal.style.pointerEvents = 'none';
+    }
+
+  } else if(!p && wasP){
+    /* RA MENU */
+    var mini2 = document.getElementById('zwp-mini');
+    if(mini2){
+      mini2.style.opacity = '1';
+      mini2.style.pointerEvents = 'auto';
+      mini2.style.transform = '';
+    }
+    console.log('%c[v13.0] 🏠 Ra menu','color:#22d3ee;font-weight:900;font-size:13px');
+  }
+}, 300);
+
+/* ═══════════════════════════════════════════════════════
+   8. POLL — INJECT LIÊN TỤC
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  if(document.getElementById('zwp-modal')){
+    injectBtnVol();
+    /* Nếu trong trận + toggle BẬT → đảm bảo iframe tồn tại */
+    if(isPlayingGame() && getInBattle()){
+      if(!document.getElementById('zwp-iframe')){
+        ensureIframePlaying();
+      }
+    }
+  }
+}, 500);
+
+/* ═══════════════════════════════════════════════════════
+   9. API
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_V130 = {
+  ensurePlaying: ensureIframePlaying,
+  applyVol: applyVol,
+  isInBattle: getInBattle
+};
+
+console.log('%c[v13.0] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+console.log('%c   ❌ Slider đã bị xóa hoàn toàn (không thể tạo lại)','color:#ef4444;font-size:11px');
+console.log('%c   🛡️ Iframe nhạc được bảo vệ khi trong trận + toggle BẬT','color:#22d3ee;font-size:11px');
+console.log('%c   🎵 Nhạc sẽ tự tạo lại nếu bị xóa','color:#fbbf24;font-size:11px');
 
 })();
 </script>
