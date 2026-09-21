@@ -14624,3 +14624,1957 @@ console.log('%c[Patch v9.8] ✅ Đã sửa hint thành "' + NEW_HINT_TEXT + '"',
   'color:#22c55e;font-weight:900;font-size:12px');
 })();
 </script>
+<script>
+/* =========================================================
+   📖 NHẬT KÝ SINH TỒN v4.1 — FIXED
+   - Sửa bug tự xóa chính mình
+   - Dùng ID mới hoàn toàn: znp-sj-*
+   - Chỉ xóa codex/journal version cũ
+   ========================================================= */
+(function(){
+'use strict';
+
+/* Log để biết script đã chạy */
+console.log('%c[SJ] Nhật Ký v4.1 bắt đầu load...','color:#22d3ee;font-weight:900');
+
+if(window.__ZNP_SURVIVAL_JOURNAL) {
+  console.log('%c[SJ] Đã load trước đó — bỏ qua','color:#fbbf24');
+  return;
+}
+window.__ZNP_SURVIVAL_JOURNAL = true;
+
+/* ══════════════════════════════════════════════════════
+   🗑️ CHỈ XÓA CÁC VERSION CŨ — KHÔNG XÓA CHÍNH MÌNH
+   ══════════════════════════════════════════════════════ */
+var OLD_IDS = [
+  'znp-codex-btn','znp-codex-modal',
+  'znp-journal-btn','znp-journal-modal',
+  'znp-journal-v3-btn','znp-journal-v3-modal',
+  'jv3-open-btn','jv3-modal'
+];
+function killOld(){
+  OLD_IDS.forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && el.parentNode) el.parentNode.removeChild(el);
+  });
+}
+killOld();
+setInterval(killOld, 500);
+
+/* ══════════════════════════════════════════════════════
+   DATA
+   ══════════════════════════════════════════════════════ */
+var STORY = [
+  {t:'NĂM 2029 · SỰ CỐ SECTOR 7',
+   d:'Tập đoàn NEO-GENE thử nghiệm khí Necro-X Neon tại Sector 7. Sai sót chu trình ổn định gen khiến toàn bộ khu vực bị nhiễm. Virus tiến hóa mỗi ngày, 98% dân số đã biến đổi.'},
+  {t:'ĐẶC VỤ PROTOCOL CUỐI CÙNG',
+   d:'Bạn là đặc vụ Protocol duy nhất còn sống sau đợt thanh trừng. Nhiệm vụ: thu thập Scrap từ xe phế tích, Bio-sample từ zombie, chế tạo vũ khí và sinh tồn.'},
+  {t:'DASH — KỸ NĂNG SỐNG CÒN',
+   d:'Nhấn Shift (PC) hoặc double-tap joystick (mobile). Có khung bất tử 0.4 giây và vệt neon phía sau. Upgrade để giảm hồi chiêu.'},
+  {t:'XP & LEVEL ROGUELITE',
+   d:'Zombie rơi XP, lên cấp chọn 1 trong 3 perk random. Cứ 3 ngày có trực thăng cứu hộ — giữ vị trí 15 giây để thắng chu kỳ.'},
+  {t:'TIẾN HÓA ZOMBIE THEO NGÀY',
+   d:'Day 2 Runner · Day 3 Tank + mũ bảo hiểm · Day 4 Leaper · Day 5 Spitter · Day 6 Stalker · Day 7 Brute & Screamer. Boss Titan 2 phase mỗi đêm.'},
+  {t:'NPC ĐỒNG MINH BUỔI SÁNG',
+   d:'Từ 5h30–11h, cảnh sát, bác sĩ, dân thường, sniper, medic... xuất hiện khi bạn di chuyển quanh map. Bấm [E] để trò chuyện và thuê họ đi theo.'},
+  {t:'PHƯƠNG TIỆN 7 LOẠI',
+   d:'Bấm [E] gần xe phế tích để cướp xe. Sedan, Sport, Truck, Police, Ambulance, Military, Moto. Cán zombie tạo máu văng + combo XP.'},
+  {t:'0h–5h · GIỜ AN TOÀN',
+   d:'Zombie rút lui hoàn toàn. Nghỉ ngơi, hồi máu, nhặt loot an toàn. Đây là lúc tốt nhất để farm Scrap và Bio.'}
+];
+
+var ZOMBIES = [
+  {n:'Walker',i:'🧟',c:'#ef4444',from:'Ngày 1+',st:'HP 65 · Tốc 1.7 · DMG 12',
+   d:'Zombie cơ bản, chậm, yếu. Xuất hiện mọi nơi, mọi thời điểm.',
+   bhv:'Đi thẳng về phía player, không né tránh.',
+   cdp:'Bắn vào đầu để tăng dmg. Vũ khí nào cũng hạ được.'},
+  {n:'Runner',i:'🏃',c:'#f87171',from:'Ngày 2+',st:'HP 48 · Tốc 3.8 · DMG 15',
+   d:'Chạy nhanh gấp 2 Walker. Đuổi dai, ưu tiên mục tiêu gần nhất.',
+   bhv:'Di chuyển cực nhanh, khó thoát nếu bị áp sát.',
+   cdp:'Ưu tiên hạ trước khi bị bao vây. Shotgun hoặc UZI hiệu quả.'},
+  {n:'Tank',i:'🛡️',c:'#22c55e',from:'Ngày 3+',st:'HP 300 · Tốc 1.15 · DMG 34',
+   d:'Trâu máu, giáp dày. 35% cơ hội đội mũ bảo hiểm (-45% dmg).',
+   bhv:'Đi chậm, không né. Cắn 1 phát là bay nửa máu.',
+   cdp:'Dùng AWP hoặc RPG để hạ nhanh. Tránh cận chiến.'},
+  {n:'Leaper',i:'🐸',c:'#f97316',from:'Ngày 4+',st:'HP 90 · Tốc 2.6 · DMG 22',
+   d:'Nhảy xa 4x tốc độ về phía player khi ở gần (<220px).',
+   bhv:'Nhảy vồ bất ngờ, jump cooldown 2.5s sau mỗi lần nhảy.',
+   cdp:'Giữ khoảng cách >250px. Bắn khi nó đang giữa không trung.'},
+  {n:'Spitter',i:'🤢',c:'#a855f7',from:'Ngày 5+',st:'HP 120 · Tốc 1.9 · DMG 10 (axit 24)',
+   d:'Phun axit tầm xa 3 hướng cùng lúc. Tạo vũng axit gây DOT.',
+   bhv:'Phun axit khi player trong 620px. Cooldown 2.2s.',
+   cdp:'Né sang ngang khi thấy nó ngẩng đầu. Vũng axit tồn tại 5s.'},
+  {n:'Stalker',i:'👻',c:'#94a3b8',from:'Ngày 6+',st:'HP 110 · Tốc 4.6 · DMG 26',
+   d:'Bán tàng hình (alpha 0.5-0.65), di chuyển cực nhanh. Nguy hiểm về đêm.',
+   bhv:'Tàng hình nhẹ, khó phát hiện. Xuất hiện khi bạn không để ý.',
+   cdp:'Bật minimap radar. Khi bị tấn công, Dash ngay ra khỏi vùng.'},
+  {n:'Brute',i:'💪',c:'#a855f7',from:'Ngày 7+',st:'HP 620 · Tốc 0.95 · DMG 58',
+   d:'Cực khỏe, sát thương khủng. Có thể mang giáp (-25% dmg).',
+   bhv:'Đi chậm rì nhưng đánh 1 phát gần chết player.',
+   cdp:'Dùng RPG hoặc Railgun. Kiting + Dash liên tục.'},
+  {n:'Screamer',i:'📢',c:'#d946ef',from:'Ngày 7+',st:'HP 150 · Tốc 2.2 · DMG 9',
+   d:'Hét lên triệu hồi 2 Walker xung quanh + gây choáng nhẹ player.',
+   bhv:'Triệu hồi Walker khi player trong 700px. Cooldown 7s.',
+   cdp:'Ưu tiên hạ Screamer TRƯỚC khi nó gọi thêm zombie.'},
+  {n:'Titan (Boss)',i:'👑',c:'#ec4899',from:'Mỗi đêm',st:'HP 2800+ · Tốc 1.6→2.56 · DMG 42 · Khiên 500',
+   d:'Trùm đêm. Có khiên năng lượng 500 HP. Phase 2 khi HP<50% — tăng tốc 60%, khiên vỡ.',
+   bhv:'Phun đạn tầm xa 3 hướng. Khiên hồi 5 HP/s.',
+   cdp:'Phá khiên trước bằng súng liên tục. Phase 2 spam Dash né.'},
+  {n:'Wraith',i:'🌫️',c:'#a855f7',from:'Đêm ngày 6+',st:'HP×0.7 (~1960) · Tốc 2.4 · DMG 42',
+   d:'Biến thể Titan. Nhanh hơn, HP thấp hơn, tấn công từ bóng tối.',
+   bhv:'Nhanh hơn Titan gốc 50%. Vẫn có khiên 500.',
+   cdp:'Dùng SLOW aura hoặc Đạn Băng để kìm tốc độ.'},
+  {n:'Colossus',i:'🗿',c:'#78716c',from:'Đêm ngày 11+',st:'HP×1.6 (~4480) · Tốc 1.2 · DMG 62 · Khiên 1200',
+   d:'Biến thể Titan. Khổng lồ, giáp siêu dày với khiên 1200.',
+   bhv:'Cực trâu nhưng chậm. Khiên gấp đôi Titan gốc.',
+   cdp:'Cần RPG + Railgun + perk Xuyên Giáp. Đánh lâu dài.'},
+  {n:'Twin Titans',i:'👑👑',c:'#f43f5e',from:'Đêm ngày 16+',st:'2× HP×0.6 (~1680/con) · Tốc 1.8 · DMG 42',
+   d:'HAI Titan cùng lúc! Đánh cặp cực nguy hiểm.',
+   bhv:'Spawn 2 con ở 2 vị trí khác nhau, cùng lao vào player.',
+   cdp:'Tách chúng ra để hạ từng con. Cần AOE dmg (RPG, Plasma).'},
+  {n:'Blind',i:'👁️',c:'#94a3b8',from:'Trong hầm',st:'HP 80 · Tốc 1.3 · DMG 15',
+   d:'Zombie mù trong hầm ngầm. Yếu nhưng xuất hiện theo đàn.',
+   bhv:'Đi chậm, không phản ứng nhanh. Bầy đàn đông đảo.',
+   cdp:'Dùng SMG hoặc Minigun để dọn nhanh cả đám.'},
+  {n:'Crawler',i:'🦎',c:'#a16207',from:'Trong hầm',st:'HP 45 · Tốc 2.9 · DMG 10',
+   d:'Bò nhanh sát đất, rất khó trúng vì hitbox thấp.',
+   bhv:'Di chuyển nhanh như Runner nhưng sát đất.',
+   cdp:'Dùng súng tầm rộng (Shotgun, Flamethrower).'},
+  {n:'Digger',i:'🕳️',c:'#78350f',from:'Trong hầm',st:'HP 160 · Tốc 0.8 · DMG 24',
+   d:'Zombie đào hầm, trâu máu nhưng cực chậm.',
+   bhv:'Di chuyển như Tank, thân hình to lớn.',
+   cdp:'Dùng AWP hoặc Railgun 1 phát hạ. Tránh xa nó.'},
+  {n:'Spitter (Hầm)',i:'🤢',c:'#a855f7',from:'Trong hầm',st:'HP 100 · Tốc 1.5 · DMG 8',
+   d:'Biến thể Spitter trong hầm — máu thấp hơn, phun axit chậm hơn.',
+   bhv:'Phun axit tầm gần. Yếu hơn Spitter ngoài map.',
+   cdp:'Dễ hạ hơn. Ưu tiên khi thấy để tránh vũng axit.'},
+  {n:'Queen Spitter (Boss hầm)',i:'👑',c:'#ec4899',from:'Hầm wave 3+',st:'HP 3000 · Tốc 1.0 · DMG 35',
+   d:'Trùm hầm ngầm. Phun axit tầm xa, triệu hồi Spitter con.',
+   bhv:'Spawn sau 30s trong hầm. Vừa bắn axit vừa gọi con.',
+   cdp:'Bắn liên tục không ngừng. Di chuyển liên tục tránh axit.'},
+  {n:'NPC Zombie',i:'🧑‍🦱',c:'#7f1d1d',from:'NPC bị cắn chết',st:'HP 120 · Tốc 2.3 · DMG 20',
+   d:'NPC đồng minh bị zombie cắn chết → biến thành zombie. Đau lòng!',
+   bhv:'Tấn công player và NPC khác như zombie bình thường.',
+   cdp:'Không thể tránh — phải bảo vệ NPC khỏi bị cắn.'}
+];
+
+var WEAPONS = [
+  {n:'DAO NEON',i:'🔪',c:'#94a3b8',from:'Khởi đầu',d:'3 combo chém liên hoàn. Đòn 3 gây x2 dmg.',st:'DMG 95 · Delay 240ms · Đạn ∞'},
+  {n:'GLOCK-X',i:'🔫',c:'#38bdf8',from:'Khởi đầu',d:'Súng lục khởi đầu, bắn nhanh, spread nhỏ.',st:'DMG 36 · Delay 190ms · Đạn ∞'},
+  {n:'UZI VOLT',i:'⚡',c:'#fbbf24',from:'Level/Rương',d:'Bắn liên tục tốc độ cao. Spread rộng.',st:'DMG 24 · Delay 70ms · Đạn 150'},
+  {n:'SPAS-12',i:'💥',c:'#f97316',from:'Level/Rương',d:'Bắn 8 viên 1 phát, dmg gần cực mạnh.',st:'DMG 26 ×8 · Delay 680ms · Đạn 32'},
+  {n:'AK-NEON',i:'🎯',c:'#ef4444',from:'Level/Rương',d:'Cân bằng, dmg tốt, độ chính xác cao.',st:'DMG 38 · Delay 105ms · Đạn 90'},
+  {n:'AWP PHOTON',i:'🔭',c:'#a855f7',from:'Level/Rương',d:'Xuyên 5 mục tiêu, dmg cực cao.',st:'DMG 260 · Delay 1050ms · Đạn 18 · Xuyên 5'},
+  {n:'RPG HELIOS',i:'🚀',c:'#ec4899',from:'Level/Rương',d:'Tên lửa nổ lan bán kính 155px.',st:'DMG 320 · Delay 1250ms · Đạn 8'},
+  {n:'DRAGON BREATH',i:'🔥',c:'#f97316',from:'Level/Rương',d:'Phun lửa liên tục, gây DOT.',st:'DMG 9 ×4 · Delay 35ms · Đạn 200'},
+  {n:'VULCAN-X',i:'🌀',c:'#38bdf8',from:'Level/Rương',d:'Bắn cực nhanh, đạn như mưa.',st:'DMG 17 · Delay 45ms · Đạn 400'},
+  {n:'RAILGUN-X',i:'⚡',c:'#22d3ee',from:'Level/Rương',d:'Xuyên 12 mục tiêu trong 1 phát.',st:'DMG 190 · Delay 900ms · Đạn 24 · Xuyên 12'},
+  {n:'PLASMA GUN',i:'🔮',c:'#c084fc',from:'Level/Rương',d:'Đạn plasma nổ lan khi trúng đích.',st:'DMG 58 · Delay 180ms · Đạn 140 · Radius 60'}
+];
+
+var NPCS = [
+  {n:'Sniper',i:'🎯',c:'#22c55e',from:'v8.5 · 5h30-11h',d:'Bắn tỉa từ xa 700px, tự động hạ zombie gần nhất.',buff:'+15% chí mạng'},
+  {n:'Combat Medic',i:'⚕️',c:'#ec4899',from:'v8.5 · 5h30-11h',d:'Hồi máu liên tục khi gần (<260px).',buff:'+3 HP/giây'},
+  {n:'Engineer',i:'🔧',c:'#fbbf24',from:'v8.5 · 5h30-11h',d:'Hồi giáp liên tục khi gần.',buff:'+3 Giáp/giây'},
+  {n:'War Dog',i:'🐕',c:'#92400e',from:'v8.5 · 5h30-11h',d:'Chó chiến, cắn zombie gần.',buff:'+15% tốc độ'},
+  {n:'Witch Doctor',i:'🧙',c:'#a855f7',from:'v8.5 · 5h30-11h',d:'Đạn player tự động gây poison.',buff:'Poison 10 dmg/s'},
+  {n:'Cảnh sát',i:'👮',c:'#3b82f6',from:'v4 · 5h30-11h',d:'Tự động bắn zombie 32 dmg/0.5s.',buff:'HP 140'},
+  {n:'Bác sĩ',i:'⚕️',c:'#4ade80',from:'v4 · 5h30-11h',d:'Hồi 18 HP/2.5s khi gần.',buff:'HP 90'},
+  {n:'Dân thường',i:'🧑',c:'#a8a29e',from:'v4 · 5h30-11h',d:'Yếu ớt, bỏ chạy khi thấy zombie.',buff:'HP 70'}
+];
+
+var PERKS = [
+  {n:'Nòng Lực Xung',i:'💥',c:'#ef4444',d:'+25% sát thương toàn bộ'},
+  {n:'Tim Thép',i:'❤️',c:'#f87171',d:'+30 Máu tối đa'},
+  {n:'Giày Phản Lực',i:'⚡',c:'#38bdf8',d:'+20% tốc độ di chuyển'},
+  {n:'Vampire Nano',i:'🧛',c:'#a855f7',d:'8% hút máu khi gây dmg'},
+  {n:'Thợ Săn Phế Liệu',i:'🔧',c:'#f59e0b',d:'Rơi nhiều Scrap & Bio x2'},
+  {n:'Kevlar MkII',i:'🛡️',c:'#60a5fa',d:'+40 Giáp + 15% giảm dmg'},
+  {n:'Xung Lướt',i:'💨',c:'#2dd4bf',d:'Dash hồi -35% + bất tử 0.4s'},
+  {n:'Drone Chiến Đấu',i:'🤖',c:'#22d3ee',d:'Triệu hồi drone hộ vệ'},
+  {n:'Vòng Lửa Halo',i:'🔥',c:'#f97316',d:'Vòng lửa quanh người gây dmg (stack)'},
+  {n:'Gai Phản Đòn',i:'⚔️',c:'#a3e635',d:'Phản 40% sát thương khi bị cắn'},
+  {n:'Nano Hồi Phục',i:'💚',c:'#22c55e',d:'+2 HP/giây (stack)'},
+  {n:'Khiên Năng Lượng',i:'🔷',c:'#0ea5e9',d:'+50 Giáp + giáp tự hồi 5/giây'},
+  {n:'Trường Chậm',i:'❄️',c:'#67e8f9',d:'Zombie trong 300px giảm 40% tốc'},
+  {n:'Đạn Nổ',i:'💣',c:'#f97316',d:'Đạn 25% cơ hội nổ lan (stack)'},
+  {n:'Protocol Dự Phòng',i:'💫',c:'#facc15',d:'Hồi sinh 1 lần với 50% HP'},
+  {n:'Tăng Tốc Dash',i:'⚡',c:'#38bdf8',d:'Giảm 35% hồi Dash, +bất tử khi dash'},
+  {n:'Hút Máu Toàn Diện',i:'🩸',c:'#dc2626',d:'+5% hút máu mọi nguồn sát thương'},
+  {n:'Xuyên Giáp',i:'🔨',c:'#facc15',d:'Bỏ qua giáp/mũ zombie +30% dmg'},
+  {n:'Nam Châm Loot',i:'🧭',c:'#a78bfa',d:'Tự hút scrap/bio/XP trong 150px'},
+  {n:'Lính Ném Lựu',i:'🎯',c:'#fb7185',d:'Tỉ lệ rơi lựu x2, +50% dmg lựu'},
+  {n:'Berserker',i:'😡',c:'#dc2626',d:'+15% dmg mỗi 25% máu đã mất (stack)'},
+  {n:'Sét Dây Chuyền',i:'⚡',c:'#60a5fa',d:'20% cơ hội đạn phóng tia sét sang zombie gần'},
+  {n:'Đạn Băng',i:'❄️',c:'#67e8f9',d:'Đạn làm chậm zombie 30% trong 1.5s'},
+  {n:'Đạn Độc',i:'🧪',c:'#84cc16',d:'Đạn gây độc 10 dmg/s trong 3s'},
+  {n:'Chí Mạng',i:'🎯',c:'#fbbf24',d:'+15% cơ hội chí mạng x2 dmg (stack)'},
+  {n:'Song Đạn',i:'🔥',c:'#f472b6',d:'20% cơ hội bắn thêm 1 viên (stack)'},
+  {n:'Cơn Sốt Vàng',i:'💰',c:'#facc15',d:'Zombie rơi vàng, +10% cơ hội mỗi kill'},
+  {n:'Bẻ Cong Thời Gian',i:'⌛',c:'#a78bfa',d:'HP <30% → zombie 400px giảm 50% tốc'},
+  {n:'Thiên Thần Hộ Mệnh',i:'👼',c:'#38bdf8',d:'HP <25% → tự hồi 40 giáp (1 lần/8s)'},
+  {n:'Cuồng Xạ',i:'🔥',c:'#ef4444',d:'+25% tốc độ bắn (stack)'}
+];
+
+var CLASSES = [
+  {n:'Soldier',i:'🪖',c:'#38bdf8',from:'Vũ khí: RIFLE',d:'Chiến binh cân bằng, phù hợp người mới.',buff:'+20% dmg súng'},
+  {n:'Berserker',i:'🔥',c:'#ef4444',from:'Vũ khí: KNIFE + 10 lựu',d:'Điên cuồng cận chiến, càng nguy càng mạnh.',buff:'+30% melee · +15% speed'},
+  {n:'Medic',i:'⚕️',c:'#22c55e',from:'Vũ khí: PISTOL',d:'Trụ cột sống sót, hồi máu mạnh.',buff:'+50% hồi máu · +1 Regen'},
+  {n:'Engineer',i:'🔧',c:'#f59e0b',from:'Vũ khí: SMG',d:'Bậc thầy công nghệ, turret miễn phí.',buff:'Turret mạnh x2 · +40 Scrap'},
+  {n:'Sniper',i:'🔭',c:'#a855f7',from:'Vũ khí: SNIPER',d:'Thợ săn tầm xa, headshot cực mạnh.',buff:'+40% range · Headshot x2'},
+  {n:'Scavenger',i:'🔍',c:'#facc15',from:'Vũ khí: SHOTGUN',d:'Kẻ nhặt nhạnh, loot nhiều gấp rưỡi.',buff:'+50% loot · Magnet bật sẵn'}
+];
+
+var MUTATIONS = [
+  {n:'TÁI TẠO TẾ BÀO',i:'💚',c:'#22c55e',d:'+3 HP/giây vĩnh viễn, +20 Máu tối đa'},
+  {n:'TỐC ĐỘ ĐỘT BIẾN',i:'⚡',c:'#38bdf8',d:'+30% tốc chạy, Dash hồi -50%'},
+  {n:'TRÍ NÃO CẢI TẠO',i:'🧠',c:'#a855f7',d:'+25% dmg, +15% crit, đạn tự xuyên giáp'},
+  {n:'MA CÀ RỒNG',i:'🩸',c:'#dc2626',d:'Hút máu 15% mọi sát thương + 10% cận chiến'},
+  {n:'SIÊU GIÁP',i:'🛡️',c:'#0ea5e9',d:'+100 Giáp max, giáp tự hồi 8/s, -20% dmg nhận'},
+  {n:'CUỒNG NỘ GEN',i:'😡',c:'#f97316',d:'+35% dmg khi HP <50%'},
+  {n:'XÚC XẮC VÀNG',i:'💰',c:'#facc15',d:'Zombie rơi vàng 3x, Scrap & Bio x3'},
+  {n:'BÓNG MA',i:'👻',c:'#c4b5fd',d:'+0.5s bất tử sau Dash, slow aura 300px'}
+];
+
+var VEHICLES = [
+  {n:'Sedan',i:'🚗',c:'#475569',from:'Xe 4 chỗ',
+   d:'Xe tiêu chuẩn, cân bằng mọi chỉ số. Màu: xám, xanh navy, đỏ đô, xanh ngọc.',
+   st:'DMG 160 · Fuel 80 · Tốc 2.4'},
+  {n:'Sport Car',i:'🏎️',c:'#dc2626',from:'Siêu xe',
+   d:'Xe thể thao, chạy nhanh nhất. Màu: đỏ, vàng, cam, tím.',
+   st:'DMG 200 · Fuel 60 · Tốc 3.5'},
+  {n:'Xe Tải',i:'🚚',c:'#78350f',from:'Hạng nặng',
+   d:'Xe tải lớn, sát thương cao, cực trâu. Thùng hàng có vạch kẻ.',
+   st:'DMG 320 · Fuel 130 · Tốc 1.9'},
+  {n:'Xe Cảnh Sát',i:'🚓',c:'#1e3a8a',from:'Đặc biệt',
+   d:'Có ĐÈN NHÁY xanh-đỏ ở nóc, hiệu ứng sáng khi ban đêm. Màu trắng-xanh.',
+   st:'DMG 210 · Fuel 90 · Tốc 2.9 · Đèn nháy'},
+  {n:'Xe Cứu Thương',i:'🚑',c:'#e2e8f0',from:'Đặc biệt',
+   d:'Chữ thập đỏ ở hông, đèn đỏ trên nóc. Nhiều nhiên liệu.',
+   st:'DMG 170 · Fuel 110 · Tốc 2.3 · Đèn đỏ'},
+  {n:'Xe Quân Sự',i:'🚙',c:'#3f6212',from:'Ngụy trang',
+   d:'Ngụy trang rằn ri nhiều màu xanh. Sát thương CAO NHẤT. Có ngôi sao vàng.',
+   st:'DMG 420 · Fuel 150 · Tốc 2.1 · Ngụy trang'},
+  {n:'Mô Tô',i:'🏍️',c:'#18181b',from:'Xe 2 bánh',
+   d:'Nhanh nhẹn, dễ luồn lách nhưng dễ văng. Bánh nhỏ.',
+   st:'DMG 90 · Fuel 45 · Tốc 4.4 · Nhanh nhất'}
+];
+
+var WEATHER = [
+  {n:'TRỜI QUANG',i:'☀️',c:'#fbbf24',from:'8h-16h',d:'Thời tiết lý tưởng, tầm nhìn tốt.',st:'Zombie +0% · Fog 0'},
+  {n:'MƯA AXIT',i:'🌧️',c:'#84cc16',from:'Mọi giờ',d:'Mưa xanh acid rơi. Giảm tầm nhìn nhẹ.',st:'Zombie +5% · Fog 5%'},
+  {n:'MƯA BÃO',i:'⛈️',c:'#3b82f6',from:'Mọi giờ',d:'Mưa lớn, sấm chớp ngẫu nhiên. Tầm nhìn kém.',st:'Zombie +10% · Fog 12%'},
+  {n:'SƯƠNG MÙ',i:'🌫️',c:'#cbd5e1',from:'0-4h · 4-8h',d:'Sương dày đặc, tầm nhìn cực kém.',st:'Zombie +15% · Fog 32%'},
+  {n:'BÃO CÁT',i:'🌪️',c:'#f59e0b',from:'8-16h · 16-20h',d:'Cát bay ngang màn hình, bụi mù.',st:'Zombie +10% · Fog 22%'},
+  {n:'NGUYỆT THỰC',i:'🌑',c:'#a855f7',from:'Đêm',d:'Ánh sáng tím kỳ ảo bao phủ.',st:'Zombie +30% · Fog 12%'},
+  {n:'BỨC XẠ',i:'☢️',c:'#a3e635',from:'Ban ngày',d:'Vùng nhiễm xạ — mất HP liên tục.',st:'-1 HP/s · Loot x1.5'},
+  {n:'TRĂNG MÁU',i:'🩸',c:'#dc2626',from:'Ban đêm',d:'Trăng đỏ máu, zombie cuồng bạo.',st:'Zombie +50% · Loot x2'}
+];
+
+var EVENTS = [
+  {n:'Trực thăng rơi',i:'🚁',c:'#f97316',d:'Xác trực thăng rơi xuống. Loot cực lớn.',st:'+100 Scrap · +30 Bio · +80 Vàng'},
+  {n:'Đoàn xe phục kích',i:'🚚',c:'#84cc16',d:'Xe quân sự bị phục kích, có vũ khí xịn.',st:'+150 Scrap · Vũ khí +60 đạn'},
+  {n:'Vùng nhiễm xạ',i:'☢️',c:'#a3e635',d:'Khu vực nhiễm xạ — đứng vào mất HP.',st:'-8 HP/s · +100 Bio'},
+  {n:'Rò rỉ phòng thí nghiệm',i:'🧪',c:'#a855f7',d:'Phòng lab NEO-GENE rò rỉ Bio chất lượng cao.',st:'+60 Bio · +40 Scrap'}
+];
+
+var RIVALS = [
+  {n:'Bandit',i:'🥷',c:'#f59e0b',d:'Thợ săn lang thang, bắn tỉa từ xa.',st:'HP 180-500 · DMG 6-10'},
+  {n:'Hunter',i:'🎯',c:'#ef4444',d:'Thợ săn chuyên nghiệp, ngắm chính xác cao.',st:'HP tuỳ tier · DMG 8-12'},
+  {n:'Merc',i:'💰',c:'#a855f7',d:'Lính đánh thuê, có thể thuê lại để hỗ trợ.',st:'Thuê 500 vàng · +15% dmg'},
+  {n:'Raider',i:'🏴‍☠️',c:'#dc2626',d:'Cướp biển hung hăng, tấn công cả NPC.',st:'Cực nguy hiểm'},
+  {n:'Scav',i:'⚙️',c:'#64748b',d:'Kẻ nhặt rác, yếu nhưng xuất hiện theo nhóm.',st:'HP thấp'},
+  {n:'Pirate',i:'🏴‍☠️',c:'#7c3aed',d:'Hải tặc, cướp bóc tàn bạo.',st:'HP tuỳ tier'},
+  {n:'Bounty',i:'💀',c:'#f43f5e',d:'Thợ săn tiền thưởng, có bounty trên đầu bạn.',st:'HP cao · DMG cao'}
+];
+
+var LOCATIONS = [
+  {n:'Nhà ở',i:'🏠',c:'#3f3f46',d:'Loại phổ biến nhất. Loot Scrap và đạn.'},
+  {n:'Bệnh viện',i:'🏥',c:'#ef4444',d:'Tòa nhà trắng, chữ thập đỏ. Nhiều Medkit và Bio.'},
+  {n:'Đồn cảnh sát',i:'👮',c:'#1e40af',d:'Tòa nhà xanh, chữ "POLICE". Vũ khí + đạn.'},
+  {n:'Siêu thị',i:'🏪',c:'#b45309',d:'Tòa nhà vàng, chữ "SHOP". Thức ăn, nước uống.'},
+  {n:'Nhà kho',i:'📦',c:'#475569',d:'Tòa nhà xám, chữ "KHO". Nhiều Scrap.'},
+  {n:'Cây xăng',i:'⛽',c:'#dc2626',d:'Biểu tượng lửa. Xăng + đôi khi RPG.'},
+  {n:'Nhà thờ',i:'⛪',c:'#d4c5b0',d:'Tòa nhà be với tháp. Đôi khi gặp Witch Doctor.'},
+  {n:'Hầm ngầm (Bunker)',i:'🕳️',c:'#a855f7',d:'Khu ngầm đặc biệt. Nhấn [B] để xuống. Có Queen Spitter.',special:true},
+  {n:'Điểm Extraction',i:'🚁',c:'#22d3ee',d:'Xuất hiện mỗi 3 ngày. Giữ 15s để thắng chu kỳ.',special:true}
+];
+
+var ITEMS = [
+  {n:'Scrap',i:'🔩',c:'#f59e0b',d:'Phế liệu kim loại. Chế tạo, mua skin, nâng cấp.'},
+  {n:'Bio-sample',i:'🧪',c:'#22c55e',d:'Mẫu sinh học. 150 Bio = 1 mutation.'},
+  {n:'XP',i:'🟣',c:'#c084fc',d:'Kinh nghiệm. Lên cấp chọn perk random.'},
+  {n:'Vàng',i:'💰',c:'#facc15',d:'Tiền tệ. Mua skin súng, thuê Rival, mua mod.'},
+  {n:'Lựu đạn',i:'💣',c:'#fb7185',d:'Nổ bán kính 120px, 180 dmg. Bấm [G] để ném.'},
+  {n:'Thức ăn',i:'🍖',c:'#fbbf24',d:'Random: +35 HP / +20% DMG 30s / +30 Giáp'},
+  {n:'Nước uống',i:'🥤',c:'#67e8f9',d:'Random: +Speed 25s / +Regen / +80 XP'},
+  {n:'Rương vũ khí',i:'🎁',c:'#a5f3fc',d:'Chứa vũ khí random + đạn. Spawn gần người chơi.'}
+];
+
+var CRAFTING = [
+  {key:'H',n:'Medkit',cost:'20 Scrap',effect:'Hồi 60 HP ngay lập tức'},
+  {key:'Q',n:'Molotov',cost:'10 Scrap + 10 Bio',effect:'Ném tạo vùng lửa 6s, 22 dmg/s'},
+  {key:'T',n:'Auto-Turret',cost:'40 Scrap',effect:'Trụ bắn tự động 28 dmg, sống 30s'},
+  {key:'F',n:'Flamethrower',cost:'60 Scrap + 20 Bio',effect:'Mở khóa DRAGON BREATH'}
+];
+
+var SKINS = [
+  {n:'Mặc Định',i:'⚪',c:'#94a3b8',d:'Skin gốc, không buff.',st:'DMG x1.0 · Giá 0'},
+  {n:'Neon Blaze',i:'🔵',c:'#22d3ee',d:'+15% sát thương toàn bộ',st:'DMG x1.15 · Giá 200💰'},
+  {n:'Blood Fury',i:'🔴',c:'#ef4444',d:'+30% sát thương toàn bộ',st:'DMG x1.3 · Giá 500💰'},
+  {n:'Gold Legend',i:'🟡',c:'#fbbf24',d:'+50% sát thương toàn bộ',st:'DMG x1.5 · Giá 1200💰'},
+  {n:'Void Reaper',i:'🟣',c:'#a855f7',d:'+80% sát thương toàn bộ',st:'DMG x1.8 · Giá 2500💰'},
+  {n:'Prismatic',i:'🌈',c:'#f472b6',d:'+120% sát thương toàn bộ',st:'DMG x2.2 · Giá 5000💰'}
+];
+
+var MODS = [
+  {n:'Nòng Giảm Thanh',i:'🔇',c:'#64748b',d:'+Range -Dmg',st:'Giá 80💰'},
+  {n:'Băng Mở Rộng',i:'📦',c:'#f59e0b',d:'+50% Ammo',st:'Giá 120💰'},
+  {n:'Ống Ngắm Laser',i:'🔴',c:'#ef4444',d:'+15% Crit',st:'Giá 150💰'},
+  {n:'Đạn Xuyên Giáp',i:'🛡️',c:'#60a5fa',d:'+30% vs Armor',st:'Giá 200💰'},
+  {n:'Bolt Nhanh',i:'⚡',c:'#38bdf8',d:'+20% Fire Rate',st:'Giá 180💰'},
+  {n:'Kính Ngắm 4x',i:'🔭',c:'#a855f7',d:'+Range +Crit',st:'Giá 220💰'}
+];
+
+var MUSIC = [
+  {n:'NEON DAWN',i:'🎵',c:'#22d3ee',d:'Nhạc nền buổi sáng, giai điệu nhẹ nhàng.',st:'BPM 110'},
+  {n:'STREET BLOOD',i:'🎵',c:'#ef4444',d:'Nhạc nền chiến đấu, nhịp nhanh mạnh mẽ.',st:'BPM 140'},
+  {n:'NIGHT TERROR',i:'🎵',c:'#a855f7',d:'Nhạc nền ban đêm, không khí căng thẳng.',st:'BPM 165'}
+];
+
+var TIPS = [
+  {i:'💡',c:'#fbbf24',t:'Nâng cấp Dash trước',d:'Là kỹ năng sống còn. Upgrade để hồi nhanh hơn và bất tử lâu hơn.'},
+  {i:'💊',c:'#22c55e',t:'Giữ ≥ 20 Scrap cho Medkit',d:'Bấm [H] để hồi máu khi cần. Đừng tiêu hết Scrap.'},
+  {i:'🌙',c:'#a855f7',t:'0h–5h là GIỜ AN TOÀN',d:'Zombie rút lui. Nghỉ ngơi, hồi máu, nhặt loot an toàn.'},
+  {i:'🚗',c:'#38bdf8',t:'Combo cán xe = XP x4',d:'Combo x10 = x2.5 XP. Combo x20 = x4 XP.'},
+  {i:'🤝',c:'#22c55e',t:'Thuê NPC buổi sáng',d:'5h30–11h. Đi quanh map để gặp, [E] để thuê.'},
+  {i:'🧬',c:'#a855f7',t:'150 Bio → Mutation',d:'Bấm nút 🧬 chọn 1 trong 3 đột biến. Buff cả run.'},
+  {i:'🕳️',c:'#ec4899',t:'Hầm ngầm nguy hiểm',d:'Nhấn [B] gần hầm để xuống. Có Queen Spitter.'},
+  {i:'⭐',c:'#facc15',t:'Build Berserker+Vampire',d:'Trâu bò. Hoặc Sniper+Crit+Xuyên giáp = one-shot.'},
+  {i:'🎁',c:'#f472b6',t:'Rương 🎁 rất đáng giá',d:'Có thể chứa Railgun hoặc Plasma — dmg khủng.'},
+  {i:'💨',c:'#2dd4bf',t:'Dash xuyên qua zombie',d:'Khi bị bao vây, Dash + 0.4s bất tử để chạy thoát.'},
+  {i:'💰',c:'#facc15',t:'Farm vàng ở Rival',d:'Hạ Rival = 50–150 vàng. Nhanh hơn farm zombie.'},
+  {i:'🎭',c:'#f472b6',t:'Chọn Class ở Cài đặt',d:'⚙️ CÀI ĐẶT → 🎭 CLASS. Áp dụng lần chơi sau.'}
+];
+
+/* ══════════════════════════════════════════════════════
+   TABS
+   ══════════════════════════════════════════════════════ */
+var TABS = [
+  {id:'story',    label:'Cốt truyện',   ic:'📖', col:'#fbbf24', data:STORY,     custom:'story'},
+  {id:'zombie',   label:'Sinh vật',     ic:'🧟', col:'#ef4444', data:ZOMBIES},
+  {id:'weapon',   label:'Vũ khí',       ic:'🔫', col:'#38bdf8', data:WEAPONS},
+  {id:'npc',      label:'Đồng minh',    ic:'👥', col:'#22c55e', data:NPCS},
+  {id:'perk',     label:'Kỹ năng',      ic:'⭐', col:'#a855f7', data:PERKS},
+  {id:'class',    label:'Class',        ic:'🎭', col:'#f472b6', data:CLASSES},
+  {id:'mutation', label:'Đột biến',     ic:'🧬', col:'#22c55e', data:MUTATIONS},
+  {id:'vehicle',  label:'Xe cộ',        ic:'🚗', col:'#f59e0b', data:VEHICLES},
+  {id:'weather',  label:'Thời tiết',    ic:'☁️', col:'#22d3ee', data:WEATHER},
+  {id:'event',    label:'Sự kiện',      ic:'🌍', col:'#f97316', data:EVENTS},
+  {id:'rival',    label:'Rival',        ic:'🎯', col:'#ec4899', data:RIVALS},
+  {id:'location', label:'Địa điểm',     ic:'🗺️', col:'#0ea5e9', data:LOCATIONS},
+  {id:'item',     label:'Vật phẩm',     ic:'🎒', col:'#facc15', data:ITEMS},
+  {id:'craft',    label:'Chế tạo',      ic:'⚒️', col:'#fbbf24', data:CRAFTING, custom:'craft'},
+  {id:'skin',     label:'Skin súng',    ic:'🎨', col:'#f472b6', data:SKINS},
+  {id:'mod',      label:'Mod súng',     ic:'🔧', col:'#a855f7', data:MODS},
+  {id:'music',    label:'Nhạc',         ic:'🎵', col:'#22d3ee', data:MUSIC},
+  {id:'stats',    label:'Thống kê',     ic:'📊', col:'#c084fc', data:[], custom:'stats'},
+  {id:'tip',      label:'Mẹo',          ic:'💡', col:'#fbbf24', data:TIPS}
+];
+
+/* ══════════════════════════════════════════════════════
+   HELPERS
+   ══════════════════════════════════════════════════════ */
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pad2(n){return String(n).padStart(2,'0');}
+
+/* ══════════════════════════════════════════════════════
+   NÚT MỞ — ID MỚI: znp-sj-btn
+   ══════════════════════════════════════════════════════ */
+var btn = document.createElement('button');
+btn.id = 'znp-sj-btn';
+btn.innerHTML = '📖 NHẬT KÝ SINH TỒN';
+btn.style.cssText =
+  'position:fixed;bottom:180px;right:20px;z-index:99999;' +
+  'background:linear-gradient(135deg,#6d28d9,#4c1d95);color:#fff;' +
+  'border:2.5px solid #c4b5fd;border-radius:12px;padding:11px 17px;' +
+  'font-weight:900;font-size:13px;cursor:pointer;' +
+  'font-family:system-ui,-apple-system,sans-serif;' +
+  'letter-spacing:0.8px;box-shadow:0 0 22px rgba(168,85,247,0.7);' +
+  'transition:transform 0.15s,box-shadow 0.3s;display:block';
+btn.onmouseenter = function(){btn.style.transform='scale(1.05)';};
+btn.onmouseleave = function(){btn.style.transform='scale(1)';};
+document.body.appendChild(btn);
+console.log('%c[SJ] ✅ Nút đã tạo: znp-sj-btn','color:#22c55e');
+
+/* ══════════════════════════════════════════════════════
+   MODAL — ID MỚI: znp-sj-modal
+   ══════════════════════════════════════════════════════ */
+var modal = document.createElement('div');
+modal.id = 'znp-sj-modal';
+modal.style.cssText =
+  'display:none;position:fixed;inset:0;z-index:2147483600;' +
+  'background:rgba(5,8,15,0.95);align-items:center;justify-content:center;padding:14px;' +
+  'font-family:system-ui,-apple-system,sans-serif;';
+document.body.appendChild(modal);
+console.log('%c[SJ] ✅ Modal đã tạo: znp-sj-modal','color:#22c55e');
+
+var curTab = 'story';
+
+/* ══════════════════════════════════════════════════════
+   RENDER CARD
+   ══════════════════════════════════════════════════════ */
+function renderCard(item){
+  var col = item.c || '#22d3ee';
+
+  /* Parse stats thành badges */
+  var badges = '';
+  if(item.st){
+    var parts = item.st.split('·').map(function(p){return p.trim();}).filter(Boolean);
+    badges = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">' +
+      parts.map(function(p){
+        return '<span style="display:inline-block;padding:4px 10px;' +
+          'background:rgba(0,0,0,0.4);border:1px solid '+col+'66;border-radius:6px;' +
+          'font-family:ui-monospace,monospace;font-size:11px;font-weight:700;color:#e2e8f0">' +
+          esc(p) +
+        '</span>';
+      }).join('') +
+    '</div>';
+  }
+
+  return '<div style="display:flex;gap:14px;padding:14px 16px;border-radius:10px;' +
+    'background:linear-gradient(180deg,rgba(30,41,59,0.55),rgba(15,23,42,0.55));' +
+    'border:1px solid '+col+'44;border-left:4px solid '+col+';margin-bottom:10px">' +
+    '<div style="flex-shrink:0;width:52px;height:52px;display:flex;align-items:center;justify-content:center;' +
+      'background:'+col+'20;border:1.5px solid '+col+'66;border-radius:10px;font-size:28px;line-height:1">' +
+      (item.i||'•') +
+    '</div>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-bottom:6px">' +
+        '<div style="color:#fff;font-weight:800;font-size:15px">'+esc(item.n||'')+'</div>' +
+        (item.from?'<div style="font-size:10px;font-weight:800;color:'+col+';padding:3px 9px;border-radius:5px;' +
+          'background:'+col+'22;border:1px solid '+col+'55;white-space:nowrap">' +
+          esc(item.from)+'</div>':'') +
+      '</div>' +
+      (item.d?'<div style="color:#cbd5e1;font-size:12.5px;line-height:1.55">'+esc(item.d)+'</div>':'') +
+      (item.bhv?'<div style="color:#fbbf24;font-size:12px;margin-top:6px;line-height:1.5">' +
+        '<b>⚡ Hành vi:</b> '+esc(item.bhv)+'</div>':'') +
+      (item.cdp?'<div style="color:#6ee7b7;font-size:12px;margin-top:4px;line-height:1.5">' +
+        '<b>🎯 Đối phó:</b> '+esc(item.cdp)+'</div>':'') +
+      badges +
+      (item.buff?'<div style="color:#6ee7b7;font-size:12px;margin-top:6px;font-weight:700">' +
+        '<b>✔ Buff:</b> '+esc(item.buff)+'</div>':'') +
+    '</div>' +
+  '</div>';
+}
+
+function renderStory(){
+  return STORY.map(function(s,i){
+    return '<div style="margin-bottom:12px;padding:16px 18px;border-radius:10px;' +
+      'background:linear-gradient(180deg,rgba(76,29,149,0.2),rgba(15,23,42,0.6));' +
+      'border:1px solid rgba(168,85,247,0.35);border-left:4px solid #a855f7">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+        '<span style="background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;' +
+          'padding:3px 12px;border-radius:5px;font-size:10px;font-weight:900;letter-spacing:1.5px">' +
+          'CHƯƠNG '+pad2(i+1)+'</span>' +
+        '<span style="color:#c4b5fd;font-weight:800;font-size:14px">'+esc(s.t)+'</span>' +
+      '</div>' +
+      '<div style="color:#e2e8f0;font-size:12.5px;line-height:1.7">'+esc(s.d)+'</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderCrafting(){
+  return CRAFTING.map(function(c){
+    return '<div style="display:flex;gap:14px;padding:14px 16px;border-radius:10px;margin-bottom:10px;' +
+      'background:linear-gradient(180deg,rgba(251,191,36,0.1),rgba(15,23,42,0.55));' +
+      'border:1px solid rgba(251,191,36,0.4);border-left:4px solid #fbbf24;align-items:center">' +
+      '<div style="flex-shrink:0;width:52px;height:52px;display:flex;align-items:center;justify-content:center;' +
+        'background:linear-gradient(135deg,#fbbf24,#b45309);border-radius:10px;' +
+        'color:#fff;font-weight:900;font-size:24px;font-family:ui-monospace,monospace">'+c.key+'</div>' +
+      '<div style="flex:1">' +
+        '<div style="color:#fff;font-weight:800;font-size:15px">'+esc(c.n)+'</div>' +
+        '<div style="color:#fcd34d;font-size:11.5px;margin-top:4px;font-family:ui-monospace,monospace;font-weight:700">💰 '+esc(c.cost)+'</div>' +
+        '<div style="color:#cbd5e1;font-size:12px;margin-top:4px">'+esc(c.effect)+'</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderStats(){
+  var s = window.__STATS || {};
+  var wk = s.weaponKills || {};
+  var top = Object.keys(wk).sort(function(a,b){return wk[b]-wk[a];}).slice(0,6);
+  var h = Math.floor((Date.now()-(s.startTime||Date.now()))/3600000);
+  var m = Math.floor(((Date.now()-(s.startTime||Date.now()))%3600000)/60000);
+  var kd = s.totalDeaths>0 ? (s.totalKills/s.totalDeaths).toFixed(1) : (s.totalKills||'0');
+
+  function box(l,v,c){
+    return '<div style="padding:14px 16px;border-radius:10px;' +
+      'background:linear-gradient(180deg,'+c+'18,rgba(15,23,42,0.6));' +
+      'border:1px solid '+c+'55;border-top:3px solid '+c+'">' +
+      '<div style="color:'+c+';font-size:10.5px;font-weight:800;letter-spacing:1px">'+l+'</div>' +
+      '<div style="color:#fff;font-size:24px;font-weight:900;margin-top:6px;font-family:ui-monospace,monospace">'+v+'</div>' +
+    '</div>';
+  }
+
+  return '<div style="padding:18px;border-radius:12px;margin-bottom:14px;' +
+    'background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(34,211,238,0.08));' +
+    'border:1px solid rgba(168,85,247,0.4);text-align:center">' +
+    '<div style="font-size:40px;margin-bottom:6px">📊</div>' +
+    '<div style="color:#c4b5fd;font-weight:900;font-size:12px;letter-spacing:2.5px;margin-bottom:8px">BẢNG THÀNH TÍCH</div>' +
+    '<div style="color:#fff;font-weight:900;font-size:26px;font-family:ui-monospace,monospace">K/D '+kd+'</div>' +
+    '<div style="color:#94a3b8;font-size:11px;margin-top:6px">Thời gian sinh tồn: '+h+'h '+m+'m</div>' +
+  '</div>' +
+  '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px">' +
+    box('TỔNG KILL',(s.totalKills||0).toLocaleString(),'#ef4444') +
+    box('CHẾT',(s.totalDeaths||0).toLocaleString(),'#f87171') +
+    box('BOSS KILL',(s.totalBossKills||0).toLocaleString(),'#ec4899') +
+    box('NGÀY CAO NHẤT',s.bestDay||1,'#fbbf24') +
+    box('LEVEL CAO NHẤT',s.bestLevel||1,'#a855f7') +
+    box('SỐ RUNS',(s.runsCount||0).toLocaleString(),'#22d3ee') +
+    box('TỔNG SCRAP',(s.totalScrap||0).toLocaleString(),'#f59e0b') +
+    box('TỔNG BIO',(s.totalBio||0).toLocaleString(),'#22c55e') +
+  '</div>' +
+  (top.length?'<div style="padding:16px;border-radius:12px;background:rgba(15,23,42,0.6);border:1px solid rgba(34,211,238,0.35)">' +
+    '<div style="color:#22d3ee;font-weight:900;font-size:12px;letter-spacing:1.5px;margin-bottom:12px">🔫 VŨ KHÍ DÙNG NHIỀU NHẤT</div>' +
+    top.map(function(w,idx){
+      var c=wk[w], t=s.totalKills||1, p=Math.round(c/t*100);
+      var col = ['#fbbf24','#22d3ee','#ef4444','#a855f7','#22c55e','#f472b6'][idx]||'#64748b';
+      return '<div style="margin-bottom:9px">' +
+        '<div style="display:flex;justify-content:space-between;margin-bottom:4px">' +
+          '<span style="color:'+col+';font-weight:800;font-size:12px">#'+(idx+1)+' '+esc(w.toUpperCase())+'</span>' +
+          '<span style="color:#94a3b8;font-size:11px;font-family:ui-monospace,monospace">'+c+' kill · '+p+'%</span>' +
+        '</div>' +
+        '<div style="height:8px;background:rgba(0,0,0,0.4);border-radius:4px;overflow:hidden">' +
+          '<div style="height:100%;width:'+p+'%;background:'+col+';border-radius:4px"></div>' +
+        '</div></div>';
+    }).join('')+'</div>':'');
+}
+
+function renderTips(){
+  return TIPS.map(function(t){
+    return '<div style="display:flex;gap:14px;padding:14px 16px;border-radius:10px;margin-bottom:10px;' +
+      'background:linear-gradient(180deg,'+t.c+'15,rgba(15,23,42,0.55));' +
+      'border:1px solid '+t.c+'44;border-left:4px solid '+t.c+'">' +
+      '<div style="flex-shrink:0;width:44px;height:44px;display:flex;align-items:center;justify-content:center;' +
+        'background:'+t.c+'22;border:1.5px solid '+t.c+'66;border-radius:9px;font-size:22px">'+t.i+'</div>' +
+      '<div style="flex:1">' +
+        '<div style="color:'+t.c+';font-weight:800;font-size:13.5px">'+esc(t.t)+'</div>' +
+        '<div style="color:#cbd5e1;font-size:12px;margin-top:4px;line-height:1.55">'+esc(t.d)+'</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function getContent(){
+  var tab = TABS.filter(function(t){return t.id===curTab;})[0];
+  if(!tab) return '';
+  if(tab.custom==='story') return renderStory();
+  if(tab.custom==='craft') return renderCrafting();
+  if(tab.custom==='stats') return renderStats();
+  if(tab.id==='tip') return renderTips();
+  return (tab.data||[]).map(renderCard).join('');
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER
+   ══════════════════════════════════════════════════════ */
+function render(){
+  var cur = TABS.filter(function(t){return t.id===curTab;})[0] || TABS[0];
+  var total = TABS.reduce(function(a,t){return a+(t.data?t.data.length:0);},0);
+
+  var sidebarItems = TABS.map(function(t){
+    var a = t.id===curTab;
+    var count = t.data?t.data.length:0;
+    return '<button data-sjtab="'+t.id+'" style="' +
+      'display:flex;align-items:center;gap:10px;width:100%;padding:10px 14px;' +
+      'background:'+(a?t.col+'22':'transparent')+';' +
+      'border:none;border-left:3px solid '+(a?t.col:'transparent')+';' +
+      'color:'+(a?'#fff':'#94a3b8')+';' +
+      'font-family:inherit;font-size:12.5px;font-weight:700;' +
+      'text-align:left;cursor:pointer;transition:background 0.15s">' +
+      '<span style="font-size:17px;line-height:1;flex-shrink:0">'+t.ic+'</span>' +
+      '<span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+t.label+'</span>' +
+      (count?'<span style="font-size:10px;font-weight:900;color:'+(a?t.col:'#64748b')+';' +
+        'background:'+(a?t.col+'33':'rgba(71,85,105,0.4)')+';padding:1px 7px;border-radius:8px">'+count+'</span>':'') +
+    '</button>';
+  }).join('');
+
+  modal.innerHTML =
+  '<div style="max-width:1100px;width:100%;height:92vh;max-height:840px;' +
+    'display:flex;flex-direction:column;' +
+    'background:#0a0f1a;border:1.5px solid '+cur.col+'66;border-radius:14px;' +
+    'box-shadow:0 0 40px '+cur.col+'55,0 20px 60px rgba(0,0,0,0.8);' +
+    'overflow:hidden">' +
+
+    /* HEADER */
+    '<div style="padding:14px 20px;border-bottom:1px solid rgba(255,255,255,0.08);' +
+      'background:linear-gradient(180deg,rgba(30,41,59,0.5),transparent);' +
+      'display:flex;justify-content:space-between;align-items:center;gap:14px;flex-shrink:0">' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="display:flex;align-items:center;gap:10px">' +
+          '<span style="font-size:22px">📖</span>' +
+          '<h2 style="color:#fff;font-weight:900;letter-spacing:1.5px;font-size:16px;margin:0">NHẬT KÝ SINH TỒN</h2>' +
+        '</div>' +
+        '<div style="color:#94a3b8;font-size:11px;margin-top:4px;font-weight:600">' +
+          '<span style="color:'+cur.col+'">●</span> Protocol Agent · ' +
+          '<span style="color:#22d3ee">'+(window.__ZNP_VERSION||'v8.9.0')+'</span> · ' +
+          '<span style="color:#fbbf24">'+total+'</span> ghi chép · ' +
+          '<span style="color:#c084fc">'+TABS.length+'</span> chương' +
+        '</div>' +
+      '</div>' +
+      '<button id="sj-close" style="background:rgba(239,68,68,0.15);' +
+        'border:1.5px solid #ef4444;color:#fca5a5;' +
+        'width:36px;height:36px;border-radius:8px;' +
+        'font-weight:900;font-size:15px;cursor:pointer;font-family:inherit">✕</button>' +
+    '</div>' +
+
+    /* BODY */
+    '<div style="flex:1;display:flex;overflow:hidden;min-height:0">' +
+      '<div style="width:220px;flex-shrink:0;padding:10px 0;' +
+        'border-right:1px solid rgba(255,255,255,0.06);' +
+        'background:rgba(0,0,0,0.25);overflow-y:auto">' +
+        sidebarItems +
+      '</div>' +
+      '<div id="sj-content" style="flex:1;padding:18px 22px;overflow-y:auto">' +
+        getContent() +
+      '</div>' +
+    '</div>' +
+
+    /* FOOTER */
+    '<div style="padding:10px 20px;border-top:1px solid rgba(255,255,255,0.08);' +
+      'background:rgba(0,0,0,0.3);display:flex;justify-content:space-between;align-items:center;' +
+      'font-size:11px;color:#64748b;font-weight:700;flex-shrink:0">' +
+      '<div>💡 Nhấn <kbd style="background:#1e293b;border:1px solid #475569;padding:2px 7px;' +
+        'border-radius:4px;font-family:ui-monospace,monospace;color:#cbd5e1;font-size:10px">ESC</kbd> để đóng · Click mục lục để chuyển chương</div>' +
+      '<div>'+cur.ic+' <span style="color:'+cur.col+';font-weight:900">'+cur.label+'</span></div>' +
+    '</div>' +
+  '</div>';
+
+  modal.querySelector('#sj-close').onclick = function(){ modal.style.display='none'; };
+  modal.querySelectorAll('[data-sjtab]').forEach(function(b){
+    b.onclick = function(){
+      curTab = b.getAttribute('data-sjtab');
+      render();
+    };
+  });
+}
+
+btn.onclick = function(){
+  render();
+  modal.style.display = 'flex';
+};
+modal.onclick = function(e){ if(e.target===modal) modal.style.display='none'; };
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape' && modal.style.display==='flex') modal.style.display='none';
+});
+
+/* ══════════════════════════════════════════════════════
+   ẨN/HIỆN THEO TRẬN
+   ══════════════════════════════════════════════════════ */
+function isPlaying(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs=document.querySelectorAll('h1');
+  for(var i=0;i<hs.length;i++) if(hs[i].textContent==='TỬ TRẬN') return false;
+  return true;
+}
+setInterval(function(){
+  if(!btn || !btn.parentNode) return;
+  var p = isPlaying();
+  btn.style.opacity = p?'0':'1';
+  btn.style.pointerEvents = p?'none':'auto';
+}, 400);
+
+console.log('%c[SJ] ✅ NHẬT KÝ v4.1 SẴN SÀNG! Click nút 📖 NHẬT KÝ SINH TỒN góc dưới-phải','color:#22c55e;font-weight:900;font-size:13px');
+})();
+</script>
+<script>
+/* =========================================================
+   📧 PATCH v10.0 — BẢNG GỬI THƯ ĐÓNG GÓP RIÊNG BIỆT
+   - Tách khỏi modal tác giả
+   - Nút riêng ở menu
+   - Form đầy đủ: Tên, Email, Loại, Tiêu đề, Nội dung
+   - Gửi qua Gmail compose hoặc mailto
+   - Lưu nháp tự động vào localStorage
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_PATCH_V100) return;
+window.__ZNP_PATCH_V100 = true;
+
+var TARGET_EMAIL = 'lequangdung013@gmail.com';
+var DRAFT_KEY = 'znp_letter_draft_v1';
+
+/* ── Keyframes ── */
+if(!document.getElementById('w100-kf')){
+  var kf = document.createElement('style');
+  kf.id = 'w100-kf';
+  kf.textContent =
+    '@keyframes w100Fade{from{opacity:0;transform:scale(0.94)}to{opacity:1;transform:scale(1)}}' +
+    '@keyframes w100Glow{' +
+      '0%,100%{box-shadow:0 0 20px rgba(234,67,53,0.55),0 0 40px rgba(234,67,53,0.2)}' +
+      '50%{box-shadow:0 0 32px rgba(234,67,53,0.95),0 0 60px rgba(234,67,53,0.4)}' +
+    '}' +
+    '@keyframes w100Float{' +
+      '0%,100%{transform:translateY(0)}' +
+      '50%{transform:translateY(-3px)}' +
+    '}' +
+    '@keyframes w100Rainbow{' +
+      '0%{background-position:0% 50%}' +
+      '100%{background-position:300% 50%}' +
+    '}';
+  document.head.appendChild(kf);
+}
+
+/* =========================================================
+   1. NÚT MỞ BẢNG GỬI THƯ Ở MENU
+   ========================================================= */
+function createLetterBtn(){
+  if(document.getElementById('znp-letter-btn')) return;
+
+  var btn = document.createElement('div');
+  btn.id = 'znp-letter-btn';
+  btn.style.cssText =
+    'position:fixed;bottom:75px;right:20px;z-index:10001;' +
+    'padding:11px 18px;border-radius:12px;' +
+    'background:linear-gradient(135deg,#ea4335,#b91c1c);color:#fff;' +
+    'border:2px solid #fca5a5;font-family:system-ui;' +
+    'font-weight:900;font-size:12px;letter-spacing:1px;' +
+    'cursor:pointer;' +
+    'box-shadow:0 0 20px rgba(234,67,53,0.7);' +
+    'transition:transform 0.15s, box-shadow 0.25s;' +
+    'white-space:nowrap;display:flex;align-items:center;gap:7px;' +
+    'animation:w100Glow 3s ease-in-out infinite;' +
+    'user-select:none;-webkit-user-select:none;';
+  btn.innerHTML = '<span style="font-size:15px">📧</span><span>GỬI THƯ ĐÓNG GÓP</span>';
+
+  btn.onmouseenter = function(){
+    btn.style.transform = 'scale(1.05)';
+    btn.style.boxShadow = '0 0 32px rgba(234,67,53,1)';
+  };
+  btn.onmouseleave = function(){
+    btn.style.transform = 'scale(1)';
+    btn.style.boxShadow = '0 0 20px rgba(234,67,53,0.7)';
+  };
+  btn.onclick = function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    openLetterModal();
+  };
+
+  document.body.appendChild(btn);
+}
+
+/* =========================================================
+   2. ĐỌC / GHI NHÁP
+   ========================================================= */
+function loadDraft(){
+  try{
+    var d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null');
+    if(d && typeof d === 'object') return d;
+  }catch(e){}
+  return { name:'', email:'', category:'gopy', subject:'', message:'' };
+}
+
+function saveDraft(data){
+  try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(data)); }catch(e){}
+}
+
+/* =========================================================
+   3. LOẠI THƯ
+   ========================================================= */
+var CATEGORIES = [
+  { id:'gopy',   label:'💡 Góp ý / Đề xuất',  color:'#38bdf8', defSubject:'Góp ý cho Zombie Protocol' },
+  { id:'ungoh',  label:'💰 Ủng hộ tác giả',   color:'#fbbf24', defSubject:'Ủng hộ Zombie Protocol' },
+  { id:'baolo',  label:'🐛 Báo lỗi',          color:'#ef4444', defSubject:'Báo lỗi game Zombie Protocol' },
+  { id:'khac',   label:'📝 Khác',             color:'#a855f7', defSubject:'Liên hệ tác giả Zombie Protocol' }
+];
+
+/* =========================================================
+   4. MODAL BẢNG GỬI THƯ
+   ========================================================= */
+var modal = null;
+
+function closeLetterModal(){
+  if(!modal) return;
+  var el = modal;
+  modal = null;
+  el.style.transition = 'opacity 0.25s';
+  el.style.opacity = '0';
+  setTimeout(function(){
+    if(el.parentNode) el.parentNode.removeChild(el);
+  }, 280);
+}
+
+function openLetterModal(){
+  if(modal){
+    /* Đã mở → nhấn lần nữa để đóng */
+    closeLetterModal();
+    return;
+  }
+
+  var draft = loadDraft();
+
+  modal = document.createElement('div');
+  modal.id = 'znp-letter-modal';
+  modal.style.cssText =
+    'position:fixed;inset:0;z-index:2147483700;' +
+    'background:rgba(2,6,15,0.96);' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'padding:14px;overflow-y:auto;' +
+    'font-family:system-ui,sans-serif;' +
+    'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);' +
+    'animation:w100Fade 0.3s ease-out;';
+
+  var card = document.createElement('div');
+  card.style.cssText =
+    'position:relative;max-width:560px;width:100%;' +
+    'padding:3px;border-radius:20px;margin:auto;' +
+    'background:linear-gradient(90deg,' +
+      '#ff0000,#ff7f00,#ffff00,#00ff00,#00bfff,#0000ff,#8b00ff,#ff0000)';
+  card.style.backgroundSize = '300% 100%';
+  card.style.animation = 'w100Rainbow 6s linear infinite';
+  card.style.boxShadow =
+    '0 0 40px rgba(234,67,53,0.55),' +
+    '0 0 80px rgba(234,67,53,0.25),' +
+    '0 0 120px rgba(168,85,247,0.2)';
+
+  var inner = document.createElement('div');
+  inner.style.cssText =
+    'background:linear-gradient(135deg,#0d1527,#1a0e2e);' +
+    'border-radius:17px;padding:22px 22px 18px;color:#fff;' +
+    'max-height:92vh;overflow-y:auto;';
+
+  inner.innerHTML =
+    /* Header */
+    '<div style="display:flex;justify-content:space-between;align-items:center;' +
+      'border-bottom:1.5px solid rgba(234,67,53,0.35);padding-bottom:12px;margin-bottom:16px">' +
+      '<div style="display:flex;align-items:center;gap:11px">' +
+        '<div style="font-size:30px;animation:w100Float 2s ease-in-out infinite">📧</div>' +
+        '<div>' +
+          '<div style="color:#fca5a5;font-weight:900;font-size:14px;letter-spacing:1.5px;' +
+            'text-shadow:0 0 12px rgba(234,67,53,0.7)">GỬI THƯ ĐÓNG GÓP</div>' +
+          '<div style="color:#94a3b8;font-size:10px;margin-top:2px;letter-spacing:0.5px">' +
+            'Ý kiến · Ủng hộ · Báo lỗi — gửi trực tiếp tới tác giả' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '<button id="w100-x" style="background:rgba(239,68,68,0.2);border:1.5px solid #ef4444;' +
+        'color:#fca5a5;width:34px;height:34px;border-radius:9px;font-weight:900;' +
+        'font-size:15px;cursor:pointer;font-family:inherit">✕</button>' +
+    '</div>' +
+
+    /* Gửi tới */
+    '<div style="background:rgba(234,67,53,0.1);border:1.5px dashed rgba(234,67,53,0.5);' +
+      'border-radius:10px;padding:9px 12px;margin-bottom:14px;' +
+      'display:flex;justify-content:space-between;align-items:center;gap:10px">' +
+      '<div style="min-width:0;flex:1">' +
+        '<div style="color:#94a3b8;font-weight:900;font-size:9px;letter-spacing:1px">📮 GỬI TỚI</div>' +
+        '<div style="color:#fca5a5;font-weight:900;font-size:12px;' +
+          'font-family:ui-monospace,monospace;margin-top:2px;' +
+          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+          TARGET_EMAIL +
+        '</div>' +
+      '</div>' +
+      '<button id="w100-copy-to" style="background:rgba(251,188,5,0.18);' +
+        'border:1.5px solid rgba(251,188,5,0.6);color:#fbbf24;' +
+        'padding:6px 11px;border-radius:8px;font-weight:900;font-size:10px;' +
+        'cursor:pointer;font-family:inherit;white-space:nowrap">📋 COPY</button>' +
+    '</div>' +
+
+    /* Form */
+    '<div style="display:flex;flex-direction:column;gap:12px">' +
+
+      /* Họ tên */
+      '<div>' +
+        '<label style="display:block;color:#cbd5e1;font-weight:900;font-size:11px;' +
+          'letter-spacing:0.8px;margin-bottom:5px">' +
+          '👤 HỌ VÀ TÊN <span style="color:#ef4444">*</span>' +
+        '</label>' +
+        '<input id="w100-name" type="text" maxlength="80" ' +
+          'placeholder="Ví dụ: Nguyễn Văn A" ' +
+          'value="' + (draft.name || '').replace(/"/g,'&quot;') + '" ' +
+          'style="width:100%;padding:10px 12px;border-radius:9px;' +
+          'background:rgba(8,15,35,0.85);border:1.5px solid rgba(34,211,238,0.4);' +
+          'color:#fff;font-family:inherit;font-size:13px;box-sizing:border-box;' +
+          'transition:border-color 0.2s, box-shadow 0.2s" ' +
+          'onfocus="this.style.borderColor=\'#22d3ee\';this.style.boxShadow=\'0 0 12px rgba(34,211,238,0.4)\'" ' +
+          'onblur="this.style.borderColor=\'rgba(34,211,238,0.4)\';this.style.boxShadow=\'none\'">' +
+      '</div>' +
+
+      /* Email */
+      '<div>' +
+        '<label style="display:block;color:#cbd5e1;font-weight:900;font-size:11px;' +
+          'letter-spacing:0.8px;margin-bottom:5px">' +
+          '📧 EMAIL CỦA BẠN <span style="color:#64748b;font-weight:700">(không bắt buộc)</span>' +
+        '</label>' +
+        '<input id="w100-email" type="email" maxlength="100" ' +
+          'placeholder="email@example.com — để tác giả phản hồi" ' +
+          'value="' + (draft.email || '').replace(/"/g,'&quot;') + '" ' +
+          'style="width:100%;padding:10px 12px;border-radius:9px;' +
+          'background:rgba(8,15,35,0.85);border:1.5px solid rgba(34,211,238,0.4);' +
+          'color:#fff;font-family:inherit;font-size:13px;box-sizing:border-box;' +
+          'transition:border-color 0.2s, box-shadow 0.2s" ' +
+          'onfocus="this.style.borderColor=\'#22d3ee\';this.style.boxShadow=\'0 0 12px rgba(34,211,238,0.4)\'" ' +
+          'onblur="this.style.borderColor=\'rgba(34,211,238,0.4)\';this.style.boxShadow=\'none\'">' +
+      '</div>' +
+
+      /* Loại thư */
+      '<div>' +
+        '<label style="display:block;color:#cbd5e1;font-weight:900;font-size:11px;' +
+          'letter-spacing:0.8px;margin-bottom:6px">' +
+          '🏷️ LOẠI THƯ <span style="color:#ef4444">*</span>' +
+        '</label>' +
+        '<div id="w100-cats" style="display:grid;grid-template-columns:repeat(2,1fr);gap:7px">' +
+          CATEGORIES.map(function(c){
+            var act = (draft.category || 'gopy') === c.id;
+            return '<button type="button" data-cat="' + c.id + '" style="' +
+              'padding:9px 8px;border-radius:9px;font-weight:900;font-size:11px;' +
+              'font-family:inherit;cursor:pointer;text-align:center;' +
+              'border:1.5px solid ' + (act ? c.color : 'rgba(71,85,105,0.6)') + ';' +
+              'background:' + (act ? c.color + '28' : 'rgba(15,23,42,0.5)') + ';' +
+              'color:' + (act ? '#fff' : '#94a3b8') + ';' +
+              'transition:all 0.15s">' +
+              c.label +
+            '</button>';
+          }).join('') +
+        '</div>' +
+      '</div>' +
+
+      /* Tiêu đề */
+      '<div>' +
+        '<label style="display:block;color:#cbd5e1;font-weight:900;font-size:11px;' +
+          'letter-spacing:0.8px;margin-bottom:5px">' +
+          '📌 TIÊU ĐỀ <span style="color:#ef4444">*</span>' +
+        '</label>' +
+        '<input id="w100-subject" type="text" maxlength="120" ' +
+          'placeholder="Tiêu đề ngắn gọn cho thư của bạn" ' +
+          'value="' + (draft.subject || '').replace(/"/g,'&quot;') + '" ' +
+          'style="width:100%;padding:10px 12px;border-radius:9px;' +
+          'background:rgba(8,15,35,0.85);border:1.5px solid rgba(34,211,238,0.4);' +
+          'color:#fff;font-family:inherit;font-size:13px;box-sizing:border-box;' +
+          'transition:border-color 0.2s, box-shadow 0.2s" ' +
+          'onfocus="this.style.borderColor=\'#22d3ee\';this.style.boxShadow=\'0 0 12px rgba(34,211,238,0.4)\'" ' +
+          'onblur="this.style.borderColor=\'rgba(34,211,238,0.4)\';this.style.boxShadow=\'none\'">' +
+      '</div>' +
+
+      /* Nội dung */
+      '<div>' +
+        '<label style="display:block;color:#cbd5e1;font-weight:900;font-size:11px;' +
+          'letter-spacing:0.8px;margin-bottom:5px;display:flex;justify-content:space-between">' +
+          '<span>✍️ NỘI DUNG <span style="color:#ef4444">*</span></span>' +
+          '<span id="w100-chars" style="color:#64748b;font-weight:700">0 / 1500</span>' +
+        '</label>' +
+        '<textarea id="w100-message" maxlength="1500" rows="6" ' +
+          'placeholder="Viết nội dung thư ở đây...&#10;&#10;Ví dụ:&#10;- Bạn thấy game thế nào?&#10;- Muốn góp ý / báo lỗi gì?&#10;- Hoặc lời nhắn ủng hộ tác giả!" ' +
+          'style="width:100%;padding:10px 12px;border-radius:9px;' +
+          'background:rgba(8,15,35,0.85);border:1.5px solid rgba(34,211,238,0.4);' +
+          'color:#fff;font-family:inherit;font-size:13px;box-sizing:border-box;' +
+          'resize:vertical;min-height:120px;line-height:1.55;' +
+          'transition:border-color 0.2s, box-shadow 0.2s" ' +
+          'onfocus="this.style.borderColor=\'#22d3ee\';this.style.boxShadow=\'0 0 12px rgba(34,211,238,0.4)\'" ' +
+          'onblur="this.style.borderColor=\'rgba(34,211,238,0.4)\';this.style.boxShadow=\'none\'">' +
+          (draft.message || '').replace(/</g,'&lt;') +
+        '</textarea>' +
+      '</div>' +
+
+    '</div>' +
+
+    /* Nút hành động */
+    '<div style="display:flex;gap:10px;margin-top:16px">' +
+      '<button id="w100-gmail" style="flex:1.4;padding:12px;border-radius:11px;' +
+        'background:linear-gradient(135deg,#ea4335,#b91c1c);color:#fff;' +
+        'border:2px solid #fca5a5;font-weight:900;font-size:12.5px;letter-spacing:1px;' +
+        'cursor:pointer;font-family:inherit;' +
+        'display:flex;align-items:center;justify-content:center;gap:7px;' +
+        'text-shadow:0 1px 3px rgba(0,0,0,0.35);' +
+        'transition:transform 0.15s, box-shadow 0.2s">' +
+        '<span style="font-size:15px">✉️</span>' +
+        '<span>MỞ GMAIL GỬI</span>' +
+      '</button>' +
+      '<button id="w100-mailto" style="flex:1;padding:12px;border-radius:11px;' +
+        'background:rgba(251,188,5,0.18);color:#fbbf24;' +
+        'border:2px solid rgba(251,188,5,0.6);font-weight:900;font-size:12px;letter-spacing:0.8px;' +
+        'cursor:pointer;font-family:inherit;' +
+        'display:flex;align-items:center;justify-content:center;gap:6px;' +
+        'transition:transform 0.15s, background 0.2s">' +
+        '<span style="font-size:14px">📨</span>' +
+        '<span>MAILTO</span>' +
+      '</button>' +
+    '</div>' +
+
+    /* Nút xóa nháp */
+    '<div style="display:flex;gap:8px;margin-top:9px">' +
+      '<button id="w100-clear" style="flex:1;padding:9px;border-radius:9px;' +
+        'background:rgba(148,163,184,0.12);color:#94a3b8;' +
+        'border:1.5px solid rgba(148,163,184,0.35);font-weight:900;font-size:11px;' +
+        'cursor:pointer;font-family:inherit">' +
+        '🗑️ XÓA NHÁP' +
+      '</button>' +
+      '<button id="w100-cancel" style="flex:1;padding:9px;border-radius:9px;' +
+        'background:rgba(148,163,184,0.12);color:#94a3b8;' +
+        'border:1.5px solid rgba(148,163,184,0.35);font-weight:900;font-size:11px;' +
+        'cursor:pointer;font-family:inherit">' +
+        '✕ ĐÓNG' +
+      '</button>' +
+    '</div>' +
+
+    '<div style="color:#64748b;font-size:9.5px;text-align:center;margin-top:10px;' +
+      'letter-spacing:0.5px;line-height:1.5">' +
+      '💾 Nháp được lưu tự động · ' +
+      '💌 Mọi thư đều được tác giả đọc và phản hồi' +
+    '</div>';
+
+  card.appendChild(inner);
+  modal.appendChild(card);
+  document.body.appendChild(modal);
+
+  /* ═══════════════════════════════════════════════════
+     BIND SỰ KIỆN
+     ═══════════════════════════════════════════════════ */
+  var $ = function(id){ return modal.querySelector('#' + id); };
+
+  var nameEl    = $('w100-name');
+  var emailEl   = $('w100-email');
+  var subjectEl = $('w100-subject');
+  var messageEl = $('w100-message');
+  var charsEl   = $('w100-chars');
+  var catBtns   = modal.querySelectorAll('[data-cat]');
+
+  var currentCategory = draft.category || 'gopy';
+
+  /* ── Cập nhật số ký tự ── */
+  function updateChars(){
+    charsEl.textContent = messageEl.value.length + ' / 1500';
+    charsEl.style.color = messageEl.value.length > 1400 ? '#ef4444' : '#64748b';
+  }
+  messageEl.addEventListener('input', updateChars);
+  updateChars();
+
+  /* ── Chọn loại thư ── */
+  catBtns.forEach(function(b){
+    b.onclick = function(){
+      currentCategory = b.getAttribute('data-cat');
+      var cat = CATEGORIES.filter(function(c){ return c.id === currentCategory; })[0];
+      catBtns.forEach(function(x){
+        var isAct = x.getAttribute('data-cat') === currentCategory;
+        var c = CATEGORIES.filter(function(cc){ return cc.id === x.getAttribute('data-cat'); })[0];
+        x.style.border = '1.5px solid ' + (isAct ? c.color : 'rgba(71,85,105,0.6)');
+        x.style.background = isAct ? c.color + '28' : 'rgba(15,23,42,0.5)';
+        x.style.color = isAct ? '#fff' : '#94a3b8';
+      });
+      /* Tự động điền tiêu đề mặc định nếu trống */
+      if(!subjectEl.value.trim() && cat){
+        subjectEl.value = cat.defSubject;
+      }
+      saveDraftNow();
+    };
+  });
+
+  /* ── Lưu nháp ── */
+  var saveTimer = null;
+  function saveDraftNow(){
+    saveDraft({
+      name: nameEl.value,
+      email: emailEl.value,
+      category: currentCategory,
+      subject: subjectEl.value,
+      message: messageEl.value
+    });
+  }
+  function scheduleSave(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveDraftNow, 500);
+  }
+
+  [nameEl, emailEl, subjectEl, messageEl].forEach(function(el){
+    el.addEventListener('input', scheduleSave);
+  });
+
+  /* ── Copy email đích ── */
+  $('w100-copy-to').onclick = function(){
+    function ok(){
+      if(window.__znpToast) window.__znpToast('✅ Đã copy: ' + TARGET_EMAIL, '#22c55e', 2200);
+    }
+    function fallback(){
+      try{
+        var ta = document.createElement('textarea');
+        ta.value = TARGET_EMAIL;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        ok();
+      }catch(e){}
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(TARGET_EMAIL).then(ok).catch(fallback);
+    } else fallback();
+  };
+
+  /* ── Validate form ── */
+  function validate(){
+    if(!nameEl.value.trim()){
+      if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập họ tên', '#f87171', 2200);
+      nameEl.focus();
+      return false;
+    }
+    if(!subjectEl.value.trim()){
+      if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập tiêu đề', '#f87171', 2200);
+      subjectEl.focus();
+      return false;
+    }
+    if(!messageEl.value.trim()){
+      if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập nội dung', '#f87171', 2200);
+      messageEl.focus();
+      return false;
+    }
+    if(messageEl.value.trim().length < 10){
+      if(window.__znpToast) window.__znpToast('⚠️ Nội dung quá ngắn (min 10 ký tự)', '#f87171', 2200);
+      messageEl.focus();
+      return false;
+    }
+    return true;
+  }
+
+  /* ── Build nội dung thư ── */
+  function buildFullBody(){
+    var cat = CATEGORIES.filter(function(c){ return c.id === currentCategory; })[0];
+    var catLabel = cat ? cat.label : 'Khác';
+    var body = '';
+    body += messageEl.value.trim() + '\n\n';
+    body += '════════════════════════════\n';
+    body += '📋 THÔNG TIN NGƯỜI GỬI\n';
+    body += '════════════════════════════\n';
+    body += '👤 Họ tên: ' + nameEl.value.trim() + '\n';
+    if(emailEl.value.trim()){
+      body += '📧 Email: ' + emailEl.value.trim() + '\n';
+    }
+    body += '🏷️ Loại: ' + catLabel + '\n';
+    body += '⏰ Gửi lúc: ' + new Date().toLocaleString('vi-VN') + '\n';
+    body += '🎮 Game: Zombie Protocol ' + (window.__ZNP_VERSION || 'v8.9.0') + '\n';
+    body += '════════════════════════════\n';
+    return body;
+  }
+
+  /* ── Gửi Gmail ── */
+  $('w100-gmail').onclick = function(){
+    if(!validate()) return;
+    saveDraftNow();
+    var url = 'https://mail.google.com/mail/?view=cm&fs=1' +
+              '&to=' + encodeURIComponent(TARGET_EMAIL) +
+              '&su=' + encodeURIComponent(subjectEl.value.trim()) +
+              '&body=' + encodeURIComponent(buildFullBody());
+    window.open(url, '_blank', 'noopener,noreferrer');
+    if(window.__znpToast) window.__znpToast('📧 Đã mở Gmail — kiểm tra và bấm Gửi nhé!', '#22c55e', 3000);
+  };
+
+  /* ── Gửi mailto ── */
+  $('w100-mailto').onclick = function(){
+    if(!validate()) return;
+    saveDraftNow();
+    var url = 'mailto:' + TARGET_EMAIL +
+              '?subject=' + encodeURIComponent(subjectEl.value.trim()) +
+              '&body=' + encodeURIComponent(buildFullBody());
+    window.location.href = url;
+    if(window.__znpToast) window.__znpToast('📨 Đang mở ứng dụng mail...', '#fbbf24', 2500);
+  };
+
+  /* ── Xóa nháp ── */
+  $('w100-clear').onclick = function(){
+    if(!confirm('Xóa toàn bộ nội dung đang nhập?')) return;
+    nameEl.value = '';
+    emailEl.value = '';
+    subjectEl.value = '';
+    messageEl.value = '';
+    currentCategory = 'gopy';
+    catBtns.forEach(function(x){
+      var isAct = x.getAttribute('data-cat') === 'gopy';
+      var c = CATEGORIES.filter(function(cc){ return cc.id === x.getAttribute('data-cat'); })[0];
+      x.style.border = '1.5px solid ' + (isAct ? c.color : 'rgba(71,85,105,0.6)');
+      x.style.background = isAct ? c.color + '28' : 'rgba(15,23,42,0.5)';
+      x.style.color = isAct ? '#fff' : '#94a3b8';
+    });
+    updateChars();
+    try{ localStorage.removeItem(DRAFT_KEY); }catch(e){}
+    if(window.__znpToast) window.__znpToast('🗑️ Đã xóa nháp', '#94a3b8', 1800);
+    nameEl.focus();
+  };
+
+  /* ── Đóng ── */
+  $('w100-x').onclick = function(){
+    saveDraftNow();
+    closeLetterModal();
+  };
+  $('w100-cancel').onclick = function(){
+    saveDraftNow();
+    closeLetterModal();
+  };
+  modal.onclick = function(e){
+    if(e.target === modal){
+      saveDraftNow();
+      closeLetterModal();
+    }
+  };
+
+  /* ── ESC ── */
+  function escHandler(e){
+    if(e.key === 'Escape' && modal){
+      saveDraftNow();
+      closeLetterModal();
+      document.removeEventListener('keydown', escHandler, true);
+    }
+  }
+  document.addEventListener('keydown', escHandler, true);
+
+  /* Focus vào ô đầu tiên */
+  setTimeout(function(){ nameEl.focus(); }, 200);
+
+  console.log('[v10.0] 📧 Đã mở bảng gửi thư đóng góp → ' + TARGET_EMAIL);
+}
+
+/* =========================================================
+   5. ẨN NÚT KHI Ở TRONG TRẬN
+   ========================================================= */
+function isPlaying(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i = 0; i < hs.length; i++) if(hs[i].textContent === 'TỬ TRẬN') return false;
+  return true;
+}
+
+setInterval(function(){
+  var btn = document.getElementById('znp-letter-btn');
+  if(!btn) return;
+  var playing = isPlaying();
+  btn.style.opacity = playing ? '0' : '1';
+  btn.style.pointerEvents = playing ? 'none' : 'auto';
+  btn.style.transform = playing ? 'translateY(80px)' : 'translateY(0)';
+  btn.style.transition = 'opacity 0.3s, transform 0.3s';
+}, 400);
+
+/* =========================================================
+   6. BOOT
+   ========================================================= */
+function ready(cb){
+  var r = document.getElementById('root');
+  if(r && r.children.length > 0) return cb();
+  setTimeout(function(){ ready(cb); }, 300);
+}
+
+ready(function(){
+  setTimeout(function(){
+    createLetterBtn();
+
+    /* Đảm bảo nút luôn tồn tại */
+    setInterval(function(){
+      if(!document.getElementById('znp-letter-btn')) createLetterBtn();
+    }, 2000);
+
+    console.log('%c[Patch v10.0] 📧 Nút "GỬI THƯ ĐÓNG GÓP" đã sẵn sàng ở menu',
+      'color:#ea4335;font-weight:900;font-size:13px');
+  }, 1500);
+});
+
+/* =========================================================
+   7. API TOÀN CỤC
+   ========================================================= */
+window.__ZNP_OPEN_LETTER = openLetterModal;
+window.__ZNP_LETTER_TARGET = TARGET_EMAIL;
+
+console.log('%c[Patch v10.0] ✅ Bảng gửi thư đóng góp riêng biệt → ' + TARGET_EMAIL,
+  'color:#ea4335;font-weight:900;font-size:12px');
+
+})();
+</script>
+<script>
+/* =========================================================
+   📧 PATCH v10.1 — GỬI THƯ TRỰC TIẾP QUA FORMsubmit.co
+   - Gửi thẳng vào Gmail lequangdung013@gmail.com
+   - Không cần user bấm Send lần nữa
+   - Dùng FormSubmit.co AJAX (miễn phí, không cần API key)
+   - Có loading + success + error state
+   - Fallback: mở Gmail compose nếu mạng lỗi
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_PATCH_V101) return;
+window.__ZNP_PATCH_V101 = true;
+
+var TARGET_EMAIL = 'lequangdung013@gmail.com';
+/* FormSubmit AJAX endpoint — gửi thẳng tới email đích */
+var FORMSUBMIT_AJAX = 'https://formsubmit.co/ajax/' + TARGET_EMAIL;
+
+/* =========================================================
+   OVERRIDE NÚT GỬI — chèn hook vào modal v10.0
+   ========================================================= */
+function upgradeSubmitButtons(){
+  var modal = document.getElementById('znp-letter-modal');
+  if(!modal) return false;
+
+  /* Tìm nút Gmail cũ */
+  var gmailBtn = modal.querySelector('#w100-gmail');
+  if(!gmailBtn) return false;
+
+  /* Đã upgrade rồi thì bỏ qua */
+  if(gmailBtn.dataset.upgraded === '1') return true;
+
+  gmailBtn.dataset.upgraded = '1';
+
+  /* Đổi nội dung nút */
+  gmailBtn.innerHTML = '<span style="font-size:15px">🚀</span><span>GỬI THƯ NGAY</span>';
+
+  /* Override onclick */
+  gmailBtn.onclick = function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    doSendDirect();
+  };
+
+  /* Đổi nút MAILTO thành nút dự phòng */
+  var mailtoBtn = modal.querySelector('#w100-mailto');
+  if(mailtoBtn && mailtoBtn.dataset.upgraded !== '1'){
+    mailtoBtn.dataset.upgraded = '1';
+    mailtoBtn.innerHTML = '<span style="font-size:14px">✉️</span><span>GMAIL</span>';
+    mailtoBtn.title = 'Dự phòng: mở Gmail compose';
+  }
+
+  console.log('[v10.1] ✅ Đã nâng cấp nút gửi → gửi trực tiếp qua FormSubmit');
+  return true;
+}
+
+/* =========================================================
+   HÀM GỬI TRỰC TIẾP QUA FORMSUBMIT
+   ========================================================= */
+function doSendDirect(){
+  var modal = document.getElementById('znp-letter-modal');
+  if(!modal) return;
+
+  var nameEl    = modal.querySelector('#w100-name');
+  var emailEl   = modal.querySelector('#w100-email');
+  var subjectEl = modal.querySelector('#w100-subject');
+  var messageEl = modal.querySelector('#w100-message');
+  var gmailBtn  = modal.querySelector('#w100-gmail');
+  var mailtoBtn = modal.querySelector('#w100-mailto');
+
+  /* ── Validate ── */
+  if(!nameEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập họ tên', '#f87171', 2200);
+    nameEl.focus();
+    return;
+  }
+  if(!subjectEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập tiêu đề', '#f87171', 2200);
+    subjectEl.focus();
+    return;
+  }
+  if(!messageEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập nội dung', '#f87171', 2200);
+    messageEl.focus();
+    return;
+  }
+  if(messageEl.value.trim().length < 10){
+    if(window.__znpToast) window.__znpToast('⚠️ Nội dung quá ngắn (min 10 ký tự)', '#f87171', 2200);
+    messageEl.focus();
+    return;
+  }
+
+  /* ── Lấy loại thư hiện tại ── */
+  var categoryEl = modal.querySelector('[data-cat].active-cat');
+  var categoryId = 'gopy';
+  /* Fallback: dò nút có border sáng */
+  if(!categoryEl){
+    var cats = modal.querySelectorAll('[data-cat]');
+    for(var i = 0; i < cats.length; i++){
+      var bc = cats[i].style.borderColor || '';
+      if(bc && bc !== 'rgba(71, 85, 105, 0.6)' && bc.indexOf('71') < 0){
+        categoryId = cats[i].getAttribute('data-cat');
+        break;
+      }
+    }
+  } else {
+    categoryId = categoryEl.getAttribute('data-cat');
+  }
+
+  var catMap = {
+    gopy:  '💡 Góp ý / Đề xuất',
+    ungoh: '💰 Ủng hộ tác giả',
+    baolo: '🐛 Báo lỗi',
+    khac:  '📝 Khác'
+  };
+  var categoryLabel = catMap[categoryId] || 'Khác';
+
+  /* ── Build data gửi ── */
+  var sendData = {
+    _subject: '[Zombie Protocol] ' + subjectEl.value.trim(),
+    _template: 'table',
+    _captcha: 'false',
+    '👤 Họ tên': nameEl.value.trim(),
+    '📧 Email người gửi': emailEl.value.trim() || '(không cung cấp)',
+    '🏷️ Loại thư': categoryLabel,
+    '📌 Tiêu đề': subjectEl.value.trim(),
+    '✍️ Nội dung': messageEl.value.trim(),
+    '🎮 Phiên bản game': window.__ZNP_VERSION || 'v8.9.0',
+    '⏰ Thời gian gửi': new Date().toLocaleString('vi-VN')
+  };
+
+  /* ── Đổi nút sang trạng thái LOADING ── */
+  var origGmailHTML = gmailBtn.innerHTML;
+  var origGmailBg = gmailBtn.style.background;
+  var origGmailBorder = gmailBtn.style.borderColor;
+  var origGmailCursor = gmailBtn.style.cursor;
+
+  gmailBtn.disabled = true;
+  gmailBtn.style.cursor = 'wait';
+  gmailBtn.style.opacity = '0.9';
+  gmailBtn.style.background = 'linear-gradient(135deg,#f59e0b,#b45309)';
+  gmailBtn.style.borderColor = '#fde68a';
+  gmailBtn.innerHTML =
+    '<span style="display:inline-block;width:14px;height:14px;' +
+      'border:2.5px solid rgba(255,255,255,0.35);' +
+      'border-top-color:#fff;border-radius:50%;' +
+      'animation:w101spin 0.7s linear infinite"></span>' +
+    '<span>ĐANG GỬI...</span>';
+
+  if(mailtoBtn) mailtoBtn.disabled = true;
+
+  /* ── Gọi FormSubmit AJAX ── */
+  fetch(FORMSUBMIT_AJAX, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(sendData)
+  })
+  .then(function(res){
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  })
+  .then(function(data){
+    /* ── SUCCESS ── */
+    gmailBtn.style.background = 'linear-gradient(135deg,#22c55e,#15803d)';
+    gmailBtn.style.borderColor = '#86efac';
+    gmailBtn.style.cursor = 'default';
+    gmailBtn.innerHTML = '<span style="font-size:15px">✅</span><span>GỬI THÀNH CÔNG!</span>';
+
+    if(window.__znpToast){
+      window.__znpToast('✅ Đã gửi thư thành công! Tác giả sẽ phản hồi sớm.', '#22c55e', 4000);
+    }
+
+    /* Hiển thị thông báo thành công to */
+    showSuccessBanner(modal, nameEl.value.trim(), emailEl.value.trim());
+
+    /* Xóa nháp */
+    try{ localStorage.removeItem('znp_letter_draft_v1'); }catch(e){}
+
+    /* Sau 2.5s → đóng modal */
+    setTimeout(function(){
+      if(typeof window.__ZNP_CLOSE_LETTER === 'function'){
+        window.__ZNP_CLOSE_LETTER();
+      } else {
+        var x = modal.querySelector('#w100-x');
+        if(x) x.click();
+      }
+    }, 2800);
+
+    console.log('[v10.1] ✅ Gửi thư thành công:', data);
+  })
+  .catch(function(err){
+    /* ── ERROR: fallback mở Gmail compose ── */
+    console.error('[v10.1] ❌ Lỗi gửi thư:', err);
+
+    gmailBtn.disabled = false;
+    gmailBtn.style.cursor = 'pointer';
+    gmailBtn.style.background = origGmailBg;
+    gmailBtn.style.borderColor = origGmailBorder;
+    gmailBtn.innerHTML = origGmailHTML;
+    if(mailtoBtn) mailtoBtn.disabled = false;
+
+    /* Thông báo lỗi + gợi ý */
+    if(window.__znpToast){
+      window.__znpToast(
+        '⚠️ Không gửi được trực tiếp — đang mở Gmail dự phòng...',
+        '#fbbf24', 3000
+      );
+    }
+
+    /* Tự động mở Gmail compose dự phòng sau 1s */
+    setTimeout(function(){
+      var url = 'https://mail.google.com/mail/?view=cm&fs=1' +
+                '&to=' + encodeURIComponent(TARGET_EMAIL) +
+                '&su=' + encodeURIComponent(subjectEl.value.trim()) +
+                '&body=' + encodeURIComponent(
+                  messageEl.value.trim() + '\n\n' +
+                  '─────────────\n' +
+                  '👤 ' + nameEl.value.trim() + '\n' +
+                  '📧 ' + (emailEl.value.trim() || '(không cung cấp)') + '\n' +
+                  '🏷️ ' + categoryLabel + '\n' +
+                  '⏰ ' + new Date().toLocaleString('vi-VN') + '\n' +
+                  '🎮 Zombie Protocol ' + (window.__ZNP_VERSION || 'v8.9.0')
+                );
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }, 1200);
+  });
+}
+
+/* =========================================================
+   BANNER THÀNH CÔNG
+   ========================================================= */
+function showSuccessBanner(modal, name, email){
+  var old = modal.querySelector('#w101-success');
+  if(old) old.remove();
+
+  var banner = document.createElement('div');
+  banner.id = 'w101-success';
+  banner.style.cssText =
+    'position:absolute;inset:0;z-index:10;' +
+    'background:rgba(2,6,15,0.96);' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'flex-direction:column;padding:30px;' +
+    'border-radius:17px;text-align:center;' +
+    'animation:w100Fade 0.35s ease-out;' +
+    'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);';
+
+  banner.innerHTML =
+    '<div style="font-size:64px;margin-bottom:12px;' +
+      'animation:w99Float 1.6s ease-in-out infinite">🎉</div>' +
+    '<div style="color:#22c55e;font-weight:900;font-size:22px;letter-spacing:2px;' +
+      'text-shadow:0 0 18px rgba(34,197,94,0.8);margin-bottom:10px">' +
+      'GỬI THÀNH CÔNG!' +
+    '</div>' +
+    '<div style="color:#e2e8f0;font-size:13px;line-height:1.7;max-width:380px;margin-bottom:14px">' +
+      'Thư của <b style="color:#fbbf24">' + escapeHTML(name) + '</b>' +
+      (email ? '<br>đã được gửi tới tác giả' : '<br>đã được gửi tới tác giả') +
+      '.<br>Hộp thư <span style="color:#fca5a5;font-family:ui-monospace,monospace">' +
+      TARGET_EMAIL + '</span> vừa nhận được mail mới!' +
+    '</div>' +
+    '<div style="color:#94a3b8;font-size:11.5px;line-height:1.6;max-width:340px;' +
+      'padding:10px 14px;border-radius:9px;' +
+      'background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3)">' +
+      '💌 Cảm ơn bạn rất nhiều!<br>' +
+      'Tác giả sẽ đọc và phản hồi sớm nhất có thể.' +
+    '</div>';
+
+  /* Gắn vào inner của modal (không phải modal gốc) */
+  var inner = modal.querySelector('div > div');
+  if(inner){
+    inner.style.position = 'relative';
+    inner.appendChild(banner);
+  } else {
+    modal.appendChild(banner);
+  }
+}
+
+function escapeHTML(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
+/* =========================================================
+   SPINNER KEYFRAME
+   ========================================================= */
+if(!document.getElementById('w101-kf')){
+  var kf = document.createElement('style');
+  kf.id = 'w101-kf';
+  kf.textContent = '@keyframes w101spin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(kf);
+}
+
+/* =========================================================
+   HOOK VÀO MODAL v10.0 — dùng MutationObserver
+   ========================================================= */
+var _watchMO = new MutationObserver(function(muts){
+  for(var i = 0; i < muts.length; i++){
+    var added = muts[i].addedNodes;
+    for(var j = 0; j < added.length; j++){
+      var n = added[j];
+      if(n.nodeType !== 1) continue;
+      if(n.id === 'znp-letter-modal' ||
+         (n.querySelector && n.querySelector('#znp-letter-modal'))){
+        /* Modal vừa được tạo → nâng cấp nút sau khi render xong */
+        setTimeout(upgradeSubmitButtons, 50);
+        setTimeout(upgradeSubmitButtons, 300);
+        setTimeout(upgradeSubmitButtons, 800);
+      }
+    }
+  }
+});
+
+function bootObserver(){
+  if(!document.body){
+    setTimeout(bootObserver, 200);
+    return;
+  }
+  _watchMO.observe(document.body, { childList: true, subtree: true });
+  console.log('[v10.1] MutationObserver đang chờ modal gửi thư...');
+}
+bootObserver();
+
+/* Fallback: poll mỗi 400ms */
+setInterval(function(){
+  if(document.getElementById('znp-letter-modal')){
+    upgradeSubmitButtons();
+  }
+}, 400);
+
+/* =========================================================
+   API TOÀN CỤC
+   ========================================================= */
+window.__ZNP_SEND_LETTER = doSendDirect;
+window.__ZNP_LETTER_ENDPOINT = FORMSUBMIT_AJAX;
+
+console.log('%c[Patch v10.1] 📧 Gửi thư TRỰC TIẾP tới ' + TARGET_EMAIL + ' — không cần bấm Send thêm',
+  'color:#22c55e;font-weight:900;font-size:13px');
+console.log('%c   → Sử dụng FormSubmit.co AJAX endpoint',
+  'color:#94a3b8;font-size:11px');
+})();
+</script>
+<script>
+/* =========================================================
+   📧 PATCH v10.1 — GỬI THƯ TRỰC TIẾP QUA FORMsubmit.co
+   - Gửi thẳng vào Gmail lequangdung013@gmail.com
+   - Không cần user bấm Send lần nữa
+   - Dùng FormSubmit.co AJAX (miễn phí, không cần API key)
+   - Có loading + success + error state
+   - Fallback: mở Gmail compose nếu mạng lỗi
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_PATCH_V101) return;
+window.__ZNP_PATCH_V101 = true;
+
+var TARGET_EMAIL = 'lequangdung013@gmail.com';
+/* FormSubmit AJAX endpoint — gửi thẳng tới email đích */
+var FORMSUBMIT_AJAX = 'https://formsubmit.co/ajax/' + TARGET_EMAIL;
+
+/* =========================================================
+   OVERRIDE NÚT GỬI — chèn hook vào modal v10.0
+   ========================================================= */
+function upgradeSubmitButtons(){
+  var modal = document.getElementById('znp-letter-modal');
+  if(!modal) return false;
+
+  /* Tìm nút Gmail cũ */
+  var gmailBtn = modal.querySelector('#w100-gmail');
+  if(!gmailBtn) return false;
+
+  /* Đã upgrade rồi thì bỏ qua */
+  if(gmailBtn.dataset.upgraded === '1') return true;
+
+  gmailBtn.dataset.upgraded = '1';
+
+  /* Đổi nội dung nút */
+  gmailBtn.innerHTML = '<span style="font-size:15px">🚀</span><span>GỬI THƯ NGAY</span>';
+
+  /* Override onclick */
+  gmailBtn.onclick = function(e){
+    e.preventDefault();
+    e.stopPropagation();
+    doSendDirect();
+  };
+
+  /* Đổi nút MAILTO thành nút dự phòng */
+  var mailtoBtn = modal.querySelector('#w100-mailto');
+  if(mailtoBtn && mailtoBtn.dataset.upgraded !== '1'){
+    mailtoBtn.dataset.upgraded = '1';
+    mailtoBtn.innerHTML = '<span style="font-size:14px">✉️</span><span>GMAIL</span>';
+    mailtoBtn.title = 'Dự phòng: mở Gmail compose';
+  }
+
+  console.log('[v10.1] ✅ Đã nâng cấp nút gửi → gửi trực tiếp qua FormSubmit');
+  return true;
+}
+
+/* =========================================================
+   HÀM GỬI TRỰC TIẾP QUA FORMSUBMIT
+   ========================================================= */
+function doSendDirect(){
+  var modal = document.getElementById('znp-letter-modal');
+  if(!modal) return;
+
+  var nameEl    = modal.querySelector('#w100-name');
+  var emailEl   = modal.querySelector('#w100-email');
+  var subjectEl = modal.querySelector('#w100-subject');
+  var messageEl = modal.querySelector('#w100-message');
+  var gmailBtn  = modal.querySelector('#w100-gmail');
+  var mailtoBtn = modal.querySelector('#w100-mailto');
+
+  /* ── Validate ── */
+  if(!nameEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập họ tên', '#f87171', 2200);
+    nameEl.focus();
+    return;
+  }
+  if(!subjectEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập tiêu đề', '#f87171', 2200);
+    subjectEl.focus();
+    return;
+  }
+  if(!messageEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập nội dung', '#f87171', 2200);
+    messageEl.focus();
+    return;
+  }
+  if(messageEl.value.trim().length < 10){
+    if(window.__znpToast) window.__znpToast('⚠️ Nội dung quá ngắn (min 10 ký tự)', '#f87171', 2200);
+    messageEl.focus();
+    return;
+  }
+
+  /* ── Lấy loại thư hiện tại ── */
+  var categoryEl = modal.querySelector('[data-cat].active-cat');
+  var categoryId = 'gopy';
+  /* Fallback: dò nút có border sáng */
+  if(!categoryEl){
+    var cats = modal.querySelectorAll('[data-cat]');
+    for(var i = 0; i < cats.length; i++){
+      var bc = cats[i].style.borderColor || '';
+      if(bc && bc !== 'rgba(71, 85, 105, 0.6)' && bc.indexOf('71') < 0){
+        categoryId = cats[i].getAttribute('data-cat');
+        break;
+      }
+    }
+  } else {
+    categoryId = categoryEl.getAttribute('data-cat');
+  }
+
+  var catMap = {
+    gopy:  '💡 Góp ý / Đề xuất',
+    ungoh: '💰 Ủng hộ tác giả',
+    baolo: '🐛 Báo lỗi',
+    khac:  '📝 Khác'
+  };
+  var categoryLabel = catMap[categoryId] || 'Khác';
+
+  /* ── Build data gửi ── */
+  var sendData = {
+    _subject: '[Zombie Protocol] ' + subjectEl.value.trim(),
+    _template: 'table',
+    _captcha: 'false',
+    '👤 Họ tên': nameEl.value.trim(),
+    '📧 Email người gửi': emailEl.value.trim() || '(không cung cấp)',
+    '🏷️ Loại thư': categoryLabel,
+    '📌 Tiêu đề': subjectEl.value.trim(),
+    '✍️ Nội dung': messageEl.value.trim(),
+    '🎮 Phiên bản game': window.__ZNP_VERSION || 'v8.9.0',
+    '⏰ Thời gian gửi': new Date().toLocaleString('vi-VN')
+  };
+
+  /* ── Đổi nút sang trạng thái LOADING ── */
+  var origGmailHTML = gmailBtn.innerHTML;
+  var origGmailBg = gmailBtn.style.background;
+  var origGmailBorder = gmailBtn.style.borderColor;
+  var origGmailCursor = gmailBtn.style.cursor;
+
+  gmailBtn.disabled = true;
+  gmailBtn.style.cursor = 'wait';
+  gmailBtn.style.opacity = '0.9';
+  gmailBtn.style.background = 'linear-gradient(135deg,#f59e0b,#b45309)';
+  gmailBtn.style.borderColor = '#fde68a';
+  gmailBtn.innerHTML =
+    '<span style="display:inline-block;width:14px;height:14px;' +
+      'border:2.5px solid rgba(255,255,255,0.35);' +
+      'border-top-color:#fff;border-radius:50%;' +
+      'animation:w101spin 0.7s linear infinite"></span>' +
+    '<span>ĐANG GỬI...</span>';
+
+  if(mailtoBtn) mailtoBtn.disabled = true;
+
+  /* ── Gọi FormSubmit AJAX ── */
+  fetch(FORMSUBMIT_AJAX, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(sendData)
+  })
+  .then(function(res){
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  })
+  .then(function(data){
+    /* ── SUCCESS ── */
+    gmailBtn.style.background = 'linear-gradient(135deg,#22c55e,#15803d)';
+    gmailBtn.style.borderColor = '#86efac';
+    gmailBtn.style.cursor = 'default';
+    gmailBtn.innerHTML = '<span style="font-size:15px">✅</span><span>GỬI THÀNH CÔNG!</span>';
+
+    if(window.__znpToast){
+      window.__znpToast('✅ Đã gửi thư thành công! Tác giả sẽ phản hồi sớm.', '#22c55e', 4000);
+    }
+
+    /* Hiển thị thông báo thành công to */
+    showSuccessBanner(modal, nameEl.value.trim(), emailEl.value.trim());
+
+    /* Xóa nháp */
+    try{ localStorage.removeItem('znp_letter_draft_v1'); }catch(e){}
+
+    /* Sau 2.5s → đóng modal */
+    setTimeout(function(){
+      if(typeof window.__ZNP_CLOSE_LETTER === 'function'){
+        window.__ZNP_CLOSE_LETTER();
+      } else {
+        var x = modal.querySelector('#w100-x');
+        if(x) x.click();
+      }
+    }, 2800);
+
+    console.log('[v10.1] ✅ Gửi thư thành công:', data);
+  })
+  .catch(function(err){
+    /* ── ERROR: fallback mở Gmail compose ── */
+    console.error('[v10.1] ❌ Lỗi gửi thư:', err);
+
+    gmailBtn.disabled = false;
+    gmailBtn.style.cursor = 'pointer';
+    gmailBtn.style.background = origGmailBg;
+    gmailBtn.style.borderColor = origGmailBorder;
+    gmailBtn.innerHTML = origGmailHTML;
+    if(mailtoBtn) mailtoBtn.disabled = false;
+
+    /* Thông báo lỗi + gợi ý */
+    if(window.__znpToast){
+      window.__znpToast(
+        '⚠️ Không gửi được trực tiếp — đang mở Gmail dự phòng...',
+        '#fbbf24', 3000
+      );
+    }
+
+    /* Tự động mở Gmail compose dự phòng sau 1s */
+    setTimeout(function(){
+      var url = 'https://mail.google.com/mail/?view=cm&fs=1' +
+                '&to=' + encodeURIComponent(TARGET_EMAIL) +
+                '&su=' + encodeURIComponent(subjectEl.value.trim()) +
+                '&body=' + encodeURIComponent(
+                  messageEl.value.trim() + '\n\n' +
+                  '─────────────\n' +
+                  '👤 ' + nameEl.value.trim() + '\n' +
+                  '📧 ' + (emailEl.value.trim() || '(không cung cấp)') + '\n' +
+                  '🏷️ ' + categoryLabel + '\n' +
+                  '⏰ ' + new Date().toLocaleString('vi-VN') + '\n' +
+                  '🎮 Zombie Protocol ' + (window.__ZNP_VERSION || 'v8.9.0')
+                );
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }, 1200);
+  });
+}
+
+/* =========================================================
+   BANNER THÀNH CÔNG
+   ========================================================= */
+function showSuccessBanner(modal, name, email){
+  var old = modal.querySelector('#w101-success');
+  if(old) old.remove();
+
+  var banner = document.createElement('div');
+  banner.id = 'w101-success';
+  banner.style.cssText =
+    'position:absolute;inset:0;z-index:10;' +
+    'background:rgba(2,6,15,0.96);' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'flex-direction:column;padding:30px;' +
+    'border-radius:17px;text-align:center;' +
+    'animation:w100Fade 0.35s ease-out;' +
+    'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);';
+
+  banner.innerHTML =
+    '<div style="font-size:64px;margin-bottom:12px;' +
+      'animation:w99Float 1.6s ease-in-out infinite">🎉</div>' +
+    '<div style="color:#22c55e;font-weight:900;font-size:22px;letter-spacing:2px;' +
+      'text-shadow:0 0 18px rgba(34,197,94,0.8);margin-bottom:10px">' +
+      'GỬI THÀNH CÔNG!' +
+    '</div>' +
+    '<div style="color:#e2e8f0;font-size:13px;line-height:1.7;max-width:380px;margin-bottom:14px">' +
+      'Thư của <b style="color:#fbbf24">' + escapeHTML(name) + '</b>' +
+      (email ? '<br>đã được gửi tới tác giả' : '<br>đã được gửi tới tác giả') +
+      '.<br>Hộp thư <span style="color:#fca5a5;font-family:ui-monospace,monospace">' +
+      TARGET_EMAIL + '</span> vừa nhận được mail mới!' +
+    '</div>' +
+    '<div style="color:#94a3b8;font-size:11.5px;line-height:1.6;max-width:340px;' +
+      'padding:10px 14px;border-radius:9px;' +
+      'background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3)">' +
+      '💌 Cảm ơn bạn rất nhiều!<br>' +
+      'Tác giả sẽ đọc và phản hồi sớm nhất có thể.' +
+    '</div>';
+
+  /* Gắn vào inner của modal (không phải modal gốc) */
+  var inner = modal.querySelector('div > div');
+  if(inner){
+    inner.style.position = 'relative';
+    inner.appendChild(banner);
+  } else {
+    modal.appendChild(banner);
+  }
+}
+
+function escapeHTML(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
+/* =========================================================
+   SPINNER KEYFRAME
+   ========================================================= */
+if(!document.getElementById('w101-kf')){
+  var kf = document.createElement('style');
+  kf.id = 'w101-kf';
+  kf.textContent = '@keyframes w101spin{to{transform:rotate(360deg)}}';
+  document.head.appendChild(kf);
+}
+
+/* =========================================================
+   HOOK VÀO MODAL v10.0 — dùng MutationObserver
+   ========================================================= */
+var _watchMO = new MutationObserver(function(muts){
+  for(var i = 0; i < muts.length; i++){
+    var added = muts[i].addedNodes;
+    for(var j = 0; j < added.length; j++){
+      var n = added[j];
+      if(n.nodeType !== 1) continue;
+      if(n.id === 'znp-letter-modal' ||
+         (n.querySelector && n.querySelector('#znp-letter-modal'))){
+        /* Modal vừa được tạo → nâng cấp nút sau khi render xong */
+        setTimeout(upgradeSubmitButtons, 50);
+        setTimeout(upgradeSubmitButtons, 300);
+        setTimeout(upgradeSubmitButtons, 800);
+      }
+    }
+  }
+});
+
+function bootObserver(){
+  if(!document.body){
+    setTimeout(bootObserver, 200);
+    return;
+  }
+  _watchMO.observe(document.body, { childList: true, subtree: true });
+  console.log('[v10.1] MutationObserver đang chờ modal gửi thư...');
+}
+bootObserver();
+
+/* Fallback: poll mỗi 400ms */
+setInterval(function(){
+  if(document.getElementById('znp-letter-modal')){
+    upgradeSubmitButtons();
+  }
+}, 400);
+
+/* =========================================================
+   API TOÀN CỤC
+   ========================================================= */
+window.__ZNP_SEND_LETTER = doSendDirect;
+window.__ZNP_LETTER_ENDPOINT = FORMSUBMIT_AJAX;
+
+console.log('%c[Patch v10.1] 📧 Gửi thư TRỰC TIẾP tới ' + TARGET_EMAIL + ' — không cần bấm Send thêm',
+  'color:#22c55e;font-weight:900;font-size:13px');
+console.log('%c   → Sử dụng FormSubmit.co AJAX endpoint',
+  'color:#94a3b8;font-size:11px');
+})();
+</script>
