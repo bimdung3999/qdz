@@ -16973,3 +16973,2041 @@ console.log('%c   → Nút "🚀 GỬI THƯ NGAY" sẽ dùng Web3Forms thay vì 
   'color:#22d3ee;font-size:11px');
 })();
 </script>
+<script>
+/* =========================================================
+   ❌ PATCH v10.3 — NÚT X NỔI ĐÓNG MODAL (MOBILE-FIRST)
+   - Thêm nút ✕ cố định góc trên-phải của MODAL
+   - Luôn hiển thị kể cả khi modal scroll
+   - Touch target ≥ 48px cho mobile
+   - Áp dụng cho: znp-welcome-modal (donate) + znp-letter-modal
+   - Bắt mọi lần modal được tạo lại
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_PATCH_V103) return;
+window.__ZNP_PATCH_V103 = true;
+
+console.log('%c[Patch v10.3] ❌ Nút X đóng modal donate đang khởi động...',
+  'color:#f87171;font-weight:900;font-size:13px');
+
+/* ── Keyframes rung nhẹ cho nút X ── */
+if(!document.getElementById('w103-kf')){
+  var kf = document.createElement('style');
+  kf.id = 'w103-kf';
+  kf.textContent =
+    '@keyframes w103pulse{' +
+      '0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0.7),0 4px 14px rgba(0,0,0,0.7)}' +
+      '50%{box-shadow:0 0 0 8px rgba(239,68,68,0),0 4px 18px rgba(0,0,0,0.8)}' +
+    '}';
+  document.head.appendChild(kf);
+}
+
+/* ── Inject style để nút X luôn trên nội dung scroll ── */
+if(!document.getElementById('w103-style')){
+  var st = document.createElement('style');
+  st.id = 'w103-style';
+  st.textContent =
+    /* Modal cần position relative để X định vị đúng */
+    '#znp-welcome-modal, #znp-letter-modal { position: fixed !important; }' +
+    /* Nút X nổi */
+    '.znp-float-close{' +
+      'position:fixed !important;' +
+      'top:max(14px, env(safe-area-inset-top, 14px)) !important;' +
+      'right:max(14px, env(safe-area-inset-right, 14px)) !important;' +
+      'z-index:2147483646 !important;' +
+      'width:48px !important;height:48px !important;' +
+      'min-width:48px !important;min-height:48px !important;' +
+      'border-radius:50% !important;' +
+      'background:linear-gradient(135deg,#ef4444,#991b1b) !important;' +
+      'border:2.5px solid #fff !important;' +
+      'color:#fff !important;' +
+      'font-size:22px !important;font-weight:900 !important;' +
+      'line-height:1 !important;' +
+      'display:flex !important;align-items:center !important;justify-content:center !important;' +
+      'cursor:pointer !important;' +
+      'font-family:system-ui,sans-serif !important;' +
+      'padding:0 !important;margin:0 !important;' +
+      'animation:w103pulse 2s ease-in-out infinite;' +
+      'transition:transform 0.15s, background 0.2s;' +
+      'touch-action:manipulation;' +
+      '-webkit-tap-highlight-color:transparent;' +
+      'user-select:none;-webkit-user-select:none;' +
+    '}' +
+    '.znp-float-close:hover, .znp-float-close:active{' +
+      'transform:scale(1.1) !important;' +
+      'background:linear-gradient(135deg,#dc2626,#7f1d1d) !important;' +
+    '}' +
+    /* Mobile: nút to hơn nữa + có nhãn nhỏ */
+    '@media (max-width:600px){' +
+      '.znp-float-close{' +
+        'width:52px !important;height:52px !important;' +
+        'font-size:24px !important;' +
+      '}' +
+    '}';
+  document.head.appendChild(st);
+}
+
+/* ═══════════════════════════════════════════════════════
+   HÀM CHÍNH: GẮN NÚT X VÀO MODAL
+   ═══════════════════════════════════════════════════════ */
+function attachCloseButton(modal){
+  if(!modal || modal.dataset.w103HasClose === '1') return;
+  modal.dataset.w103HasClose = '1';
+
+  /* ── Tạo nút X ── */
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'znp-float-close';
+  btn.innerHTML = '✕';
+  btn.setAttribute('aria-label', 'Đóng');
+  btn.title = 'Đóng (Esc)';
+
+  /* ── Sự kiện click: đóng modal ── */
+  function doClose(e){
+    if(e){ e.preventDefault(); e.stopPropagation(); }
+    /* Đóng qua hàm chuẩn nếu có */
+    try{
+      if(modal.id === 'znp-letter-modal' && typeof window.__ZNP_CLOSE_LETTER === 'function'){
+        window.__ZNP_CLOSE_LETTER();
+        return;
+      }
+    }catch(err){}
+    /* Fallback: ẩn/xóa modal */
+    modal.style.transition = 'opacity 0.25s';
+    modal.style.opacity = '0';
+    setTimeout(function(){
+      if(modal.parentNode) modal.parentNode.removeChild(modal);
+    }, 260);
+  }
+  btn.addEventListener('click', doClose, true);
+  btn.addEventListener('touchend', doClose, {capture:true, passive:false});
+
+  /* ── Gắn nút vào body (fixed position, không bị cuộn theo modal) ── */
+  document.body.appendChild(btn);
+
+  /* ── Khi modal bị xóa → xóa nút X theo ── */
+  var cleanupTimer = setInterval(function(){
+    if(!modal.parentNode){
+      btn.remove();
+      clearInterval(cleanupTimer);
+    }
+  }, 800);
+
+  /* ── Esc để đóng (nếu chưa có) ── */
+  function escHandler(e){
+    if(e.key === 'Escape'){
+      document.removeEventListener('keydown', escHandler, true);
+      doClose();
+    }
+  }
+  document.addEventListener('keydown', escHandler, true);
+
+  console.log('[v10.3] ✅ Đã gắn nút X cho #' + modal.id);
+}
+
+/* ═══════════════════════════════════════════════════════
+   THEO DÕI MODAL XUẤT HIỆN
+   ═══════════════════════════════════════════════════════ */
+var WATCH_IDS = ['znp-welcome-modal', 'znp-letter-modal'];
+
+function scanAndAttach(){
+  for(var i = 0; i < WATCH_IDS.length; i++){
+    var m = document.getElementById(WATCH_IDS[i]);
+    if(m) attachCloseButton(m);
+  }
+}
+
+/* ── MutationObserver: bắt modal vừa được thêm vào DOM ── */
+var _w103MO = new MutationObserver(function(muts){
+  for(var i = 0; i < muts.length; i++){
+    var added = muts[i].addedNodes;
+    for(var j = 0; j < added.length; j++){
+      var n = added[j];
+      if(n.nodeType !== 1) continue;
+      /* Direct match */
+      if(WATCH_IDS.indexOf(n.id) >= 0){
+        setTimeout(function(nn){ return function(){ attachCloseButton(nn); }; }(n), 50);
+      }
+      /* Nested match */
+      if(n.querySelector){
+        for(var k = 0; k < WATCH_IDS.length; k++){
+          var found = n.querySelector('#' + WATCH_IDS[k]);
+          if(found){
+            setTimeout(function(ff){ return function(){ attachCloseButton(ff); }; }(found), 50);
+          }
+        }
+      }
+    }
+  }
+});
+
+function bootMO(){
+  if(!document.body){
+    setTimeout(bootMO, 200);
+    return;
+  }
+  _w103MO.observe(document.body, { childList: true, subtree: true });
+  console.log('[v10.3] MutationObserver đang chờ modal...');
+}
+bootMO();
+
+/* ── Fallback: poll mỗi 500ms ── */
+setInterval(scanAndAttach, 500);
+scanAndAttach();
+
+/* ═══════════════════════════════════════════════════════
+   FIX LAYOUT MOBILE: modal max-height + scroll tốt hơn
+   ═══════════════════════════════════════════════════════ */
+function fixMobileLayout(){
+  var m = document.getElementById('znp-welcome-modal');
+  if(!m || m.dataset.w103LayoutFix === '1') return;
+  m.dataset.w103LayoutFix = '1';
+
+  /* Padding top tránh nút X đè lên nội dung */
+  m.style.paddingTop = '70px';
+  m.style.boxSizing = 'border-box';
+
+  /* Đảm bảo modal cuộn được trên mobile */
+  m.style.overflowY = 'auto';
+  m.style.WebkitOverflowScrolling = 'touch';
+}
+setInterval(fixMobileLayout, 600);
+fixMobileLayout();
+
+console.log('%c[Patch v10.3] ✅ Hoàn tất — Nút X nổi góc trên-phải cho donate modal',
+  'color:#22c55e;font-weight:900;font-size:13px');
+console.log('%c   → Touch target 48-52px cho mobile · Luôn hiển thị khi scroll',
+  'color:#94a3b8;font-size:11px');
+
+})();
+</script>
+<script>
+/* =========================================================
+   🌐 PATCH v11.4 — NHẠC WEB PLAYER ĐẸP + PHÁT NHẠC
+   - Xóa bản cũ v11.3
+   - Mini player nổi góc trái dưới: có play/pause, đổi bài
+   - Modal player to: iframe nhúng + controls + playlist
+   - Neon glow đồng bộ với theme Zombie Protocol
+   - Tự ẩn khi vào trận
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_WEB_PLAYER_V114) return;
+window.__ZNP_WEB_PLAYER_V114 = true;
+
+/* ═══════════════════════════════════════════════════════════
+   🎵 DANH SÁCH NHẠC — Thêm link bạn muốn tại đây
+   ═══════════════════════════════════════════════════════════ */
+var PLAYLIST = [
+  {
+    id: 'main',
+    title: 'Nhạc Online',
+    sub: 'EdgeOne Player',
+    icon: '🎵',
+    color: '#22d3ee',
+    url: 'https://confident-copper-fjxqd28c.edgeone.dev/'
+  }
+  /* Thêm bài khác theo mẫu:
+  ,{
+    id: 'song2',
+    title: 'Tên bài',
+    sub: 'Nguồn',
+    icon: '🎧',
+    color: '#a855f7',
+    url: 'https://...'
+  }
+  */
+];
+
+/* ── Xóa nút cũ ── */
+['zmp-web-btn','zmp-web-modal'].forEach(function(id){
+  var el = document.getElementById(id);
+  if(el && el.parentNode) el.parentNode.removeChild(el);
+});
+
+/* ═══════════════════════════════════════════════════════════
+   🎨 CSS
+   ═══════════════════════════════════════════════════════════ */
+if(!document.getElementById('zwp-css')){
+  var css = document.createElement('style');
+  css.id = 'zwp-css';
+  css.textContent = `
+
+  /* ══════ MINI PLAYER ══════ */
+  #zwp-mini{
+    position:fixed; top:90px; left:20px; z-index:9997;
+    display:flex; align-items:center; gap:9px;
+    padding:8px 12px 8px 10px;
+    border-radius:14px;
+    background:linear-gradient(135deg, rgba(13,21,39,0.96), rgba(26,14,46,0.94));
+    border:2px solid #22d3ee;
+    box-shadow:
+      0 0 18px rgba(34,211,238,0.55),
+      0 8px 24px rgba(0,0,0,0.6),
+      inset 0 0 20px rgba(34,211,238,0.06);
+    font-family:system-ui,sans-serif; color:#fff;
+    cursor:pointer; user-select:none; -webkit-user-select:none;
+    transition:transform 0.2s, box-shadow 0.3s, opacity 0.3s;
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    -webkit-tap-highlight-color:transparent;
+    touch-action:manipulation;
+  }
+  #zwp-mini:hover{
+    transform:scale(1.04);
+    box-shadow:
+      0 0 28px rgba(34,211,238,0.95),
+      0 8px 28px rgba(0,0,0,0.7);
+  }
+  #zwp-mini.playing{ border-color:#fbbf24; box-shadow:0 0 24px rgba(251,191,36,0.75),0 8px 24px rgba(0,0,0,0.6); }
+
+  #zwp-mini .ic{
+    font-size:20px; line-height:1;
+    width:34px; height:34px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(34,211,238,0.18);
+    border:1.5px solid rgba(34,211,238,0.55);
+    transition:transform 0.3s;
+  }
+  #zwp-mini.playing .ic{ animation:zwpSpin 3s linear infinite; background:rgba(251,191,36,0.18); border-color:rgba(251,191,36,0.6); }
+
+  #zwp-mini .tx{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+  #zwp-mini .t1{ font-size:11.5px; font-weight:900; letter-spacing:0.8px; color:#a5f3fc; white-space:nowrap; }
+  #zwp-mini.playing .t1{ color:#fde68a; }
+  #zwp-mini .t2{ font-size:9px; font-weight:700; color:#94a3b8; letter-spacing:0.4px; white-space:nowrap; }
+
+  #zwp-mini .bars{
+    display:flex; align-items:flex-end; gap:2px; height:16px; margin-left:3px;
+  }
+  #zwp-mini .bars span{
+    width:2.5px; background:#22d3ee; border-radius:2px;
+    height:4px; transition:height 0.15s;
+  }
+  #zwp-mini.playing .bars span{
+    background:#fbbf24;
+    animation:zwpBar 0.9s ease-in-out infinite;
+  }
+  #zwp-mini .bars span:nth-child(1){ animation-delay:0s; }
+  #zwp-mini .bars span:nth-child(2){ animation-delay:0.15s; }
+  #zwp-mini .bars span:nth-child(3){ animation-delay:0.3s; }
+  #zwp-mini .bars span:nth-child(4){ animation-delay:0.45s; }
+
+  /* ══════ MODAL PLAYER ══════ */
+  #zwp-modal{
+    position:fixed; inset:0; z-index:2147483600;
+    background:rgba(2,6,15,0.96);
+    display:none; align-items:center; justify-content:center;
+    padding:14px;
+    font-family:system-ui,sans-serif;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    animation:zwpFade 0.28s ease-out;
+  }
+  #zwp-modal.open{ display:flex; }
+
+  #zwp-card{
+    width:100%; max-width:880px; height:88vh; max-height:680px;
+    background:linear-gradient(135deg,#0d1527,#1a0e2e);
+    border:2.5px solid transparent;
+    border-radius:18px;
+    box-shadow:
+      0 0 50px rgba(34,211,238,0.55),
+      0 0 100px rgba(168,85,247,0.25),
+      0 20px 60px rgba(0,0,0,0.8);
+    display:flex; flex-direction:column; overflow:hidden;
+    position:relative;
+  }
+  #zwp-card::before{
+    content:''; position:absolute; inset:-2.5px; border-radius:18px;
+    background:linear-gradient(90deg,#22d3ee,#a855f7,#f472b6,#fbbf24,#22d3ee);
+    background-size:300% 100%;
+    z-index:-1; animation:zwpRainbow 5s linear infinite;
+  }
+
+  /* ── Header ── */
+  #zwp-head{
+    padding:12px 16px; flex-shrink:0;
+    display:flex; justify-content:space-between; align-items:center; gap:12px;
+    background:linear-gradient(180deg,rgba(30,41,59,0.7),rgba(15,23,42,0.3));
+    border-bottom:1.5px solid rgba(34,211,238,0.35);
+  }
+  #zwp-head .tt{
+    display:flex; align-items:center; gap:11px; min-width:0;
+  }
+  #zwp-head .tt .logo{
+    width:40px; height:40px; border-radius:11px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:20px;
+    background:linear-gradient(135deg,rgba(34,211,238,0.25),rgba(168,85,247,0.25));
+    border:2px solid rgba(34,211,238,0.6);
+    box-shadow:0 0 14px rgba(34,211,238,0.5);
+  }
+  #zwp-head .tt .nm{
+    color:#fff; font-weight:900; font-size:14px; letter-spacing:1px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #zwp-head .tt .sb{
+    color:#94a3b8; font-size:10.5px; font-weight:700; letter-spacing:0.5px;
+    margin-top:1px;
+  }
+
+  #zwp-head .actions{ display:flex; gap:8px; flex-shrink:0; }
+  .zwp-hbtn{
+    width:38px; height:38px; border-radius:10px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(34,211,238,0.12);
+    border:1.5px solid rgba(34,211,238,0.5);
+    color:#a5f3fc; font-size:15px; font-weight:900;
+    cursor:pointer; font-family:inherit;
+    transition:transform 0.15s, background 0.2s, color 0.2s;
+  }
+  .zwp-hbtn:hover{ transform:scale(1.08); background:rgba(34,211,238,0.25); }
+  .zwp-hbtn.close{
+    background:rgba(239,68,68,0.18);
+    border-color:rgba(239,68,68,0.6);
+    color:#fca5a5;
+  }
+  .zwp-hbtn.close:hover{ background:rgba(239,68,68,0.35); }
+
+  /* ── Body ── */
+  #zwp-body{
+    flex:1; position:relative; background:#000; min-height:0;
+  }
+  #zwp-iframe{
+    width:100%; height:100%; border:none; display:block; background:#000;
+  }
+
+  #zwp-load{
+    position:absolute; inset:0; z-index:5;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:14px; color:#67e8f9; font-weight:900; font-size:13px; letter-spacing:1px;
+    background:linear-gradient(135deg,rgba(13,21,39,0.96),rgba(26,14,46,0.96));
+    transition:opacity 0.4s;
+  }
+  #zwp-load .spin{
+    width:44px; height:44px;
+    border:3px solid rgba(34,211,238,0.25);
+    border-top-color:#22d3ee;
+    border-right-color:#a855f7;
+    border-radius:50%;
+    animation:zwpSpin 0.75s linear infinite;
+  }
+  #zwp-load .tips{
+    color:#64748b; font-size:10.5px; font-weight:700;
+    letter-spacing:0.5px; margin-top:4px; text-align:center; padding:0 20px;
+  }
+
+  /* ── Footer controls ── */
+  #zwp-foot{
+    flex-shrink:0; padding:10px 16px;
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(0deg,rgba(30,41,59,0.65),rgba(15,23,42,0.35));
+    border-top:1.5px solid rgba(34,211,238,0.3);
+    min-height:60px;
+  }
+  #zwp-foot .info{
+    flex:1; min-width:0;
+  }
+  #zwp-foot .info .n{
+    color:#fff; font-weight:900; font-size:12.5px; letter-spacing:0.6px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #zwp-foot .info .s{
+    color:#94a3b8; font-size:10px; margin-top:2px; font-weight:700;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+
+  .zwp-ctrl{
+    width:44px; height:44px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(34,211,238,0.14);
+    border:2px solid rgba(34,211,238,0.55);
+    color:#a5f3fc; font-size:18px;
+    cursor:pointer; font-family:inherit;
+    transition:transform 0.15s, background 0.2s, box-shadow 0.2s;
+    flex-shrink:0;
+  }
+  .zwp-ctrl:hover{ transform:scale(1.06); background:rgba(34,211,238,0.28); }
+  .zwp-ctrl.main{
+    width:52px; height:52px; font-size:22px;
+    background:linear-gradient(135deg,#22c55e,#15803d);
+    border-color:#86efac;
+    box-shadow:0 0 18px rgba(34,197,94,0.7);
+    color:#fff;
+  }
+  .zwp-ctrl.main:hover{ box-shadow:0 0 28px rgba(34,197,94,1); }
+  .zwp-ctrl.main.paused{
+    background:linear-gradient(135deg,#f59e0b,#b45309);
+    border-color:#fde68a;
+    box-shadow:0 0 18px rgba(245,158,11,0.7);
+  }
+  .zwp-ctrl.main.paused:hover{ box-shadow:0 0 28px rgba(245,158,11,1); }
+
+  /* ── Playlist ── */
+  #zwp-list{
+    flex-shrink:0; max-height:130px; overflow-y:auto;
+    padding:6px 10px;
+    background:rgba(0,0,0,0.3);
+    border-top:1px solid rgba(255,255,255,0.05);
+  }
+  #zwp-list .it{
+    display:flex; align-items:center; gap:10px;
+    padding:8px 10px; border-radius:9px;
+    cursor:pointer;
+    border:1.5px solid transparent;
+    transition:all 0.15s;
+    margin-bottom:3px;
+  }
+  #zwp-list .it:hover{ background:rgba(34,211,238,0.08); }
+  #zwp-list .it.active{
+    background:linear-gradient(90deg,rgba(34,211,238,0.2),rgba(34,211,238,0.05));
+    border-color:rgba(34,211,238,0.5);
+  }
+  #zwp-list .it .ic{
+    width:32px; height:32px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(34,211,238,0.15); font-size:15px;
+    border:1.5px solid rgba(34,211,238,0.4);
+    flex-shrink:0;
+  }
+  #zwp-list .it.active .ic{
+    background:rgba(34,211,238,0.3);
+    box-shadow:0 0 12px rgba(34,211,238,0.6);
+  }
+  #zwp-list .it .m{ flex:1; min-width:0; }
+  #zwp-list .it .m .n{
+    color:#e2e8f0; font-weight:900; font-size:11.5px;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #zwp-list .it.active .m .n{ color:#a5f3fc; }
+  #zwp-list .it .m .s{
+    color:#64748b; font-size:9.5px; font-weight:700;
+    margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  #zwp-list .it .badge{
+    font-size:8.5px; font-weight:900; letter-spacing:0.6px;
+    padding:2px 7px; border-radius:6px;
+    background:rgba(251,191,36,0.2);
+    color:#fbbf24;
+    border:1px solid rgba(251,191,36,0.5);
+    white-space:nowrap;
+  }
+
+  /* ── Animations ── */
+  @keyframes zwpSpin{ to{ transform:rotate(360deg); } }
+  @keyframes zwpFade{ from{opacity:0;transform:scale(0.96)} to{opacity:1;transform:scale(1)} }
+  @keyframes zwpRainbow{
+    0%{ background-position:0% 50%; }
+    100%{ background-position:300% 50%; }
+  }
+  @keyframes zwpBar{
+    0%,100%{ height:4px; }
+    50%{ height:16px; }
+  }
+
+  /* ── Mobile ── */
+  @media (max-width:600px){
+    #zwp-mini{ top:74px; left:14px; padding:7px 10px 7px 8px; }
+    #zwp-mini .ic{ width:30px; height:30px; font-size:17px; }
+    #zwp-mini .t1{ font-size:10.5px; }
+    #zwp-mini .t2{ font-size:8.5px; }
+    #zwp-card{ height:92vh; }
+    #zwp-head{ padding:10px 12px; }
+    #zwp-head .tt .logo{ width:34px; height:34px; font-size:17px; }
+    #zwp-head .tt .nm{ font-size:12.5px; }
+    #zwp-foot{ padding:8px 10px; gap:8px; min-height:54px; }
+    .zwp-ctrl{ width:40px; height:40px; font-size:16px; }
+    .zwp-ctrl.main{ width:48px; height:48px; font-size:20px; }
+    #zwp-list{ max-height:100px; }
+  }
+  `;
+  document.head.appendChild(css);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   🎵 STATE
+   ═══════════════════════════════════════════════════════════ */
+var state = {
+  currentId: PLAYLIST[0].id,
+  playing: false,
+  modalOpen: false
+};
+var iframeRef = null;
+
+function getCurrent(){
+  for(var i = 0; i < PLAYLIST.length; i++){
+    if(PLAYLIST[i].id === state.currentId) return PLAYLIST[i];
+  }
+  return PLAYLIST[0];
+}
+
+/* ═══════════════════════════════════════════════════════════
+   🎼 MINI PLAYER
+   ═══════════════════════════════════════════════════════════ */
+function createMini(){
+  var m = document.createElement('div');
+  m.id = 'zwp-mini';
+  m.innerHTML = `
+    <div class="ic" id="zwp-mini-ic">🎵</div>
+    <div class="tx">
+      <div class="t1" id="zwp-mini-t1">NHẠC WEB</div>
+      <div class="t2" id="zwp-mini-t2">Bấm để mở</div>
+    </div>
+    <div class="bars">
+      <span></span><span></span><span></span><span></span>
+    </div>
+  `;
+  m.onclick = function(){
+    /* Nếu chưa phát → phát luôn; nếu đang phát → mở modal */
+    if(!state.playing){
+      playCurrent();
+      openModal();
+    } else {
+      openModal();
+    }
+  };
+  document.body.appendChild(m);
+  updateMini();
+}
+
+function updateMini(){
+  var m = document.getElementById('zwp-mini');
+  if(!m) return;
+  var cur = getCurrent();
+  var ic = document.getElementById('zwp-mini-ic');
+  var t1 = document.getElementById('zwp-mini-t1');
+  var t2 = document.getElementById('zwp-mini-t2');
+
+  if(state.playing){
+    m.classList.add('playing');
+    if(ic) ic.textContent = '🎶';
+    if(t1) t1.textContent = cur.title.toUpperCase();
+    if(t2) t2.textContent = 'Đang phát · Bấm để điều khiển';
+  } else {
+    m.classList.remove('playing');
+    if(ic) ic.textContent = cur.icon;
+    if(t1) t1.textContent = 'NHẠC WEB';
+    if(t2) t2.textContent = 'Bấm để phát nhạc';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ▶️ PHÁT NHẠC
+   ═══════════════════════════════════════════════════════════ */
+function playCurrent(){
+  var cur = getCurrent();
+  var iframe = document.getElementById('zwp-iframe');
+
+  if(iframe){
+    /* Nếu iframe đã tồn tại và đúng URL → chỉ resume */
+    if(iframe.dataset.songId === cur.id){
+      try{
+        /* Gửi postMessage để yêu cầu play (nhiều player hỗ trợ) */
+        iframe.contentWindow.postMessage(JSON.stringify({
+          event:'command', func:'playVideo', args:[]
+        }), '*');
+        iframe.contentWindow.postMessage({ type:'play' }, '*');
+      }catch(e){}
+    } else {
+      /* Đổi bài */
+      iframe.dataset.songId = cur.id;
+      iframe.src = cur.url;
+    }
+  }
+
+  state.playing = true;
+  updateMini();
+  updateModalUI();
+}
+
+function pauseCurrent(){
+  var iframe = document.getElementById('zwp-iframe');
+  if(iframe){
+    try{
+      iframe.contentWindow.postMessage(JSON.stringify({
+        event:'command', func:'pauseVideo', args:[]
+      }), '*');
+      iframe.contentWindow.postMessage({ type:'pause' }, '*');
+    }catch(e){}
+  }
+  state.playing = false;
+  updateMini();
+  updateModalUI();
+}
+
+function togglePlay(){
+  if(state.playing) pauseCurrent();
+  else playCurrent();
+}
+
+function switchSong(id){
+  if(id === state.currentId && state.playing){
+    /* Bấm lại bài đang phát → pause */
+    pauseCurrent();
+    return;
+  }
+  state.currentId = id;
+  state.playing = false;
+  /* Nếu iframe đang mở → đổi ngay */
+  var iframe = document.getElementById('zwp-iframe');
+  if(iframe){
+    var cur = getCurrent();
+    iframe.dataset.songId = cur.id;
+    iframe.src = cur.url;
+  }
+  playCurrent();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   🪟 MODAL PLAYER
+   ═══════════════════════════════════════════════════════════ */
+function openModal(){
+  if(document.getElementById('zwp-modal')){
+    document.getElementById('zwp-modal').classList.add('open');
+    state.modalOpen = true;
+    return;
+  }
+
+  var cur = getCurrent();
+  var modal = document.createElement('div');
+  modal.id = 'zwp-modal';
+  modal.className = 'open';
+  modal.innerHTML = `
+    <div id="zwp-card">
+      <!-- Header -->
+      <div id="zwp-head">
+        <div class="tt">
+          <div class="logo">🎧</div>
+          <div style="min-width:0">
+            <div class="nm">NHẠC WEB PLAYER</div>
+            <div class="sb" id="zwp-head-sub">${escapeHTML(cur.title)} · ${PLAYLIST.length} bài</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="zwp-hbtn" id="zwp-reload" title="Tải lại">↻</button>
+          <button class="zwp-hbtn" id="zwp-external" title="Mở tab mới">↗</button>
+          <button class="zwp-hbtn close" id="zwp-close" title="Đóng (Esc)">✕</button>
+        </div>
+      </div>
+
+      <!-- Body iframe -->
+      <div id="zwp-body">
+        <div id="zwp-load">
+          <div class="spin"></div>
+          <div>Đang tải nhạc...</div>
+          <div class="tips">Một số nhạc có thể bị chặn autoplay — bấm ▶ để bắt đầu</div>
+        </div>
+        <iframe id="zwp-iframe"
+          src="${cur.url}"
+          data-song-id="${cur.id}"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write"
+          allowfullscreen
+          referrerpolicy="no-referrer-when-downgrade"></iframe>
+      </div>
+
+      <!-- Footer controls -->
+      <div id="zwp-foot">
+        <div class="info">
+          <div class="n" id="zwp-foot-n">${escapeHTML(cur.title)}</div>
+          <div class="s" id="zwp-foot-s">${escapeHTML(cur.sub)}</div>
+        </div>
+        <button class="zwp-ctrl" id="zwp-prev" title="Bài trước">⏮</button>
+        <button class="zwp-ctrl main paused" id="zwp-play" title="Phát / Tạm dừng">▶</button>
+        <button class="zwp-ctrl" id="zwp-next" title="Bài sau">⏭</button>
+      </div>
+
+      <!-- Playlist -->
+      ${PLAYLIST.length > 1 ? `
+      <div id="zwp-list">
+        ${PLAYLIST.map(function(s){
+          return `
+            <div class="it ${s.id===state.currentId?'active':''}" data-id="${s.id}">
+              <div class="ic">${s.icon}</div>
+              <div class="m">
+                <div class="n">${escapeHTML(s.title)}</div>
+                <div class="s">${escapeHTML(s.sub)}</div>
+              </div>
+              ${s.id===state.currentId && state.playing ? '<div class="badge">▶ ĐANG PHÁT</div>' : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+      ` : ''}
+    </div>
+  `;
+  document.body.appendChild(modal);
+  state.modalOpen = true;
+
+  /* ── Ẩn spinner khi iframe load ── */
+  var iframe = modal.querySelector('#zwp-iframe');
+  var load = modal.querySelector('#zwp-load');
+  iframe.onload = function(){
+    if(load){
+      load.style.opacity = '0';
+      setTimeout(function(){ if(load.parentNode) load.remove(); }, 450);
+    }
+  };
+  /* Auto ẩn spinner sau 3s dù chưa load xong */
+  setTimeout(function(){
+    if(load && load.parentNode){
+      load.style.opacity = '0';
+      setTimeout(function(){ if(load.parentNode) load.remove(); }, 450);
+    }
+  }, 3000);
+
+  /* ── Bind controls ── */
+  modal.querySelector('#zwp-close').onclick = closeModal;
+  modal.querySelector('#zwp-reload').onclick = function(e){
+    e.stopPropagation();
+    var c = getCurrent();
+    var fr = modal.querySelector('#zwp-iframe');
+    if(fr){
+      fr.src = 'about:blank';
+      setTimeout(function(){
+        fr.dataset.songId = c.id;
+        fr.src = c.url;
+      }, 100);
+    }
+  };
+  modal.querySelector('#zwp-external').onclick = function(e){
+    e.stopPropagation();
+    window.open(getCurrent().url, '_blank', 'noopener,noreferrer');
+  };
+  modal.querySelector('#zwp-play').onclick = function(e){
+    e.stopPropagation();
+    togglePlay();
+  };
+  modal.querySelector('#zwp-prev').onclick = function(e){
+    e.stopPropagation();
+    var idx = PLAYLIST.findIndex(function(s){ return s.id === state.currentId; });
+    var nextIdx = (idx - 1 + PLAYLIST.length) % PLAYLIST.length;
+    switchSong(PLAYLIST[nextIdx].id);
+  };
+  modal.querySelector('#zwp-next').onclick = function(e){
+    e.stopPropagation();
+    var idx = PLAYLIST.findIndex(function(s){ return s.id === state.currentId; });
+    var nextIdx = (idx + 1) % PLAYLIST.length;
+    switchSong(PLAYLIST[nextIdx].id);
+  };
+
+  /* ── Playlist items ── */
+  modal.querySelectorAll('#zwp-list .it').forEach(function(el){
+    el.onclick = function(e){
+      e.stopPropagation();
+      switchSong(el.getAttribute('data-id'));
+    };
+  });
+
+  /* ── Đóng khi click ngoài ── */
+  modal.onclick = function(e){
+    if(e.target === modal) closeModal();
+  };
+
+  /* ── ESC ── */
+  function esc(e){
+    if(e.key === 'Escape'){
+      document.removeEventListener('keydown', esc, true);
+      closeModal();
+    }
+  }
+  document.addEventListener('keydown', esc, true);
+
+  updateModalUI();
+
+  /* ── Tự phát ── */
+  if(!state.playing){
+    playCurrent();
+  }
+}
+
+function closeModal(){
+  var m = document.getElementById('zwp-modal');
+  if(!m) return;
+  m.classList.remove('open');
+  m.style.transition = 'opacity 0.25s';
+  m.style.opacity = '0';
+  setTimeout(function(){
+    if(m && m.parentNode) m.parentNode.removeChild(m);
+    state.modalOpen = false;
+    /* Xóa iframe để giải phóng audio (không thì vẫn phát) */
+    /* Nhưng nếu muốn phát nền thì giữ nguyên */
+    /* Tạm giữ iframe để tiếp tục phát nền */
+  }, 260);
+}
+
+function updateModalUI(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  var cur = getCurrent();
+
+  /* Play button */
+  var playBtn = modal.querySelector('#zwp-play');
+  if(playBtn){
+    if(state.playing){
+      playBtn.classList.remove('paused');
+      playBtn.innerHTML = '⏸';
+      playBtn.title = 'Tạm dừng';
+    } else {
+      playBtn.classList.add('paused');
+      playBtn.innerHTML = '▶';
+      playBtn.title = 'Phát';
+    }
+  }
+
+  /* Footer info */
+  var fn = modal.querySelector('#zwp-foot-n');
+  var fs = modal.querySelector('#zwp-foot-s');
+  if(fn) fn.textContent = cur.title;
+  if(fs) fs.textContent = cur.sub;
+
+  /* Header sub */
+  var hsub = modal.querySelector('#zwp-head-sub');
+  if(hsub) hsub.textContent = cur.title + ' · ' + PLAYLIST.length + ' bài';
+
+  /* Playlist active + badge */
+  modal.querySelectorAll('#zwp-list .it').forEach(function(el){
+    var id = el.getAttribute('data-id');
+    var isActive = id === state.currentId;
+    el.classList.toggle('active', isActive);
+    /* Badge */
+    var oldBadge = el.querySelector('.badge');
+    if(oldBadge) oldBadge.remove();
+    if(isActive && state.playing){
+      var b = document.createElement('div');
+      b.className = 'badge';
+      b.textContent = '▶ ĐANG PHÁT';
+      el.appendChild(b);
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   🛠 HELPERS
+   ═══════════════════════════════════════════════════════════ */
+function escapeHTML(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   👁 ẨN KHI VÀO TRẬN
+   ═══════════════════════════════════════════════════════════ */
+function isPlayingGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i = 0; i < hs.length; i++){
+    if(hs[i].textContent === 'TỬ TRẬN') return false;
+  }
+  return true;
+}
+
+var _lastP = null;
+setInterval(function(){
+  var m = document.getElementById('zwp-mini');
+  if(!m) return;
+  var p = isPlayingGame();
+  if(p !== _lastP){
+    _lastP = p;
+    m.style.opacity = p ? '0' : '1';
+    m.style.pointerEvents = p ? 'none' : 'auto';
+    m.style.transform = p ? 'translateX(-200px)' : 'translateX(0)';
+  }
+}, 400);
+
+/* ═══════════════════════════════════════════════════════════
+   🚀 BOOT
+   ═══════════════════════════════════════════════════════════ */
+function ready(cb){
+  var r = document.getElementById('root');
+  if(r && r.children.length > 0) return cb();
+  setTimeout(function(){ ready(cb); }, 300);
+}
+ready(function(){
+  setTimeout(function(){
+    createMini();
+    console.log('%c[Web Player v11.4] 🌐 Nhạc Web Player đã sẵn sàng!', 'color:#22d3ee;font-weight:900;font-size:13px');
+    console.log('%c  → Mini player ở góc trái trên màn hình', 'color:#94a3b8;font-size:11px');
+    console.log('%c  → Bấm để phát nhạc & mở modal điều khiển', 'color:#94a3b8;font-size:11px');
+  }, 1800);
+});
+
+/* ═══════════════════════════════════════════════════════════
+   🌐 API TOÀN CỤC
+   ═══════════════════════════════════════════════════════════ */
+window.__ZNP_WEB = {
+  open: openModal,
+  close: closeModal,
+  play: playCurrent,
+  pause: pauseCurrent,
+  toggle: togglePlay,
+  playById: switchSong,
+  list: function(){ return PLAYLIST.slice(); },
+  state: function(){ return Object.assign({}, state); }
+};
+
+})();
+</script>
+<script>
+/* =========================================================
+   🔧 PATCH v11.5 — GIỮ NHẠC PHÁT KHI ĐÓNG MODAL
+   - Chặn xóa modal #zwp-modal khỏi DOM
+   - Chỉ ẩn bằng transform offscreen → iframe vẫn chạy
+   - Khi mở lại → khôi phục vị trí, nhạc tiếp tục liền mạch
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_WEB_KEEPPLAY) return;
+window.__ZNP_WEB_KEEPPLAY = true;
+
+console.log('%c[v11.5] 🔧 Đang patch giữ nhạc khi đóng modal...',
+  'color:#22c55e;font-weight:900;font-size:13px');
+
+/* ═══════════════════════════════════════════════════════
+   1. CHẶN XÓA MODAL — thay bằng ẩn đi
+   ═══════════════════════════════════════════════════════ */
+var origRemoveChild = Node.prototype.removeChild;
+Node.prototype.removeChild = function(child){
+  /* Nếu đang cố xóa modal nhạc → chỉ ẩn đi, KHÔNG xóa */
+  if(child && child.id === 'zwp-modal'){
+    keepAlive(child);
+    return child;
+  }
+  return origRemoveChild.apply(this, arguments);
+};
+
+/* Patch cả .remove() cho chắc */
+var origRemove = Element.prototype.remove;
+Element.prototype.remove = function(){
+  if(this.id === 'zwp-modal'){
+    keepAlive(this);
+    return;
+  }
+  return origRemove.apply(this, arguments);
+};
+
+/* ═══════════════════════════════════════════════════════
+   2. ẨN MODAL — dùng transform offscreen
+   - Không dùng display:none (một số browser tạm dừng iframe)
+   - Không dùng visibility:hidden (inherited → iframe cũng ẩn)
+   - Chỉ đẩy ra ngoài viewport → iframe vẫn render → nhạc vẫn phát
+   ═══════════════════════════════════════════════════════ */
+function keepAlive(modal){
+  modal.style.transform = 'translateX(-99999px)';
+  modal.style.opacity = '0';
+  modal.style.pointerEvents = 'none';
+  console.log('%c[v11.5] ✅ Modal ẩn — nhạc vẫn đang phát nền 🎵',
+    'color:#22d3ee;font-weight:900');
+}
+
+function restore(modal){
+  modal.style.transform = '';
+  modal.style.opacity = '';
+  modal.style.pointerEvents = '';
+  console.log('%c[v11.5] ✅ Modal hiện lại — nhạc tiếp tục 🎶',
+    'color:#fbbf24;font-weight:900');
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. THEO DÕI CLASS 'open' — khi mở lại thì khôi phục
+   ═══════════════════════════════════════════════════════ */
+var mo = new MutationObserver(function(muts){
+  for(var i = 0; i < muts.length; i++){
+    var m = muts[i];
+    if(m.type === 'attributes' && m.attributeName === 'class'){
+      var el = m.target;
+      if(el.id === 'zwp-modal' && el.classList.contains('open')){
+        restore(el);
+      }
+    }
+  }
+});
+
+/* Attach observer khi modal xuất hiện lần đầu */
+var observed = new WeakSet();
+setInterval(function(){
+  var m = document.getElementById('zwp-modal');
+  if(m && !observed.has(m)){
+    observed.add(m);
+    mo.observe(m, { attributes: true, attributeFilter: ['class'] });
+    console.log('[v11.5] Đã theo dõi modal');
+  }
+}, 500);
+
+/* ═══════════════════════════════════════════════════════
+   4. BONUS: Đảm bảo mini player phản ánh trạng thái đúng
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  var mini = document.getElementById('zwp-mini');
+  if(!mini || !window.__ZNP_WEB) return;
+  var s = window.__ZNP_WEB.state ? window.__ZNP_WEB.state() : null;
+  if(!s) return;
+  if(s.playing && !mini.classList.contains('playing')){
+    mini.classList.add('playing');
+    var ic = document.getElementById('zwp-mini-ic');
+    if(ic) ic.textContent = '🎶';
+    var t2 = document.getElementById('zwp-mini-t2');
+    if(t2) t2.textContent = 'Đang phát · Bấm để điều khiển';
+  } else if(!s.playing && mini.classList.contains('playing')){
+    mini.classList.remove('playing');
+    var ic2 = document.getElementById('zwp-mini-ic');
+    if(ic2) ic2.textContent = '🎵';
+    var t22 = document.getElementById('zwp-mini-t2');
+    if(t22) t22.textContent = 'Bấm để phát nhạc';
+  }
+}, 800);
+
+console.log('%c[v11.5] ✅ Patch hoàn tất — đóng bảng menu nhạc sẽ KHÔNG tắt nhạc nữa!',
+  'color:#22c55e;font-weight:900;font-size:14px');
+console.log('%c   → Bấm mini player để mở lại bảng điều khiển bất cứ lúc nào 🎵',
+  'color:#94a3b8;font-size:11px');
+
+})();
+</script>
+<script>
+/* =========================================================
+   🔊 PATCH v11.6 — NHẠC TO TỐI ĐA + TẮT KHI VÀO TRẬN
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_WEB_V116) return;
+window.__ZNP_WEB_V116 = true;
+
+console.log('%c[v11.6] 🔊 Patch khởi động...','color:#22c55e;font-weight:900;font-size:13px');
+
+/* ═══════════════════════════════════════════════════════
+   1. VOLUME — LƯU + GỬI TỚI IFRAME
+   ═══════════════════════════════════════════════════════ */
+var VOL_KEY = 'znp_web_volume_v1';
+var currentVolume = 100;
+try{
+  var sv = parseInt(localStorage.getItem(VOL_KEY) || '100');
+  if(sv >= 0 && sv <= 100) currentVolume = sv;
+}catch(e){}
+
+/* Gửi lệnh set volume tới iframe bằng NHIỀU format
+   để tương thích với hầu hết player */
+function sendVolume(vol){
+  var iframe = document.getElementById('zwp-iframe');
+  if(!iframe) return;
+
+  /* ── Same-origin: set trực tiếp ── */
+  try{
+    var doc = iframe.contentDocument || iframe.contentWindow.document;
+    if(doc){
+      doc.querySelectorAll('audio, video').forEach(function(m){
+        try{ m.volume = Math.min(1, vol/100); }catch(e){}
+      });
+      /* Nếu player có biến global */
+      try{
+        if(iframe.contentWindow.player && typeof iframe.contentWindow.player.setVolume === 'function'){
+          iframe.contentWindow.player.setVolume(vol);
+        }
+      }catch(e){}
+    }
+  }catch(e){}
+
+  /* ── Cross-origin: postMessage đa format ── */
+  var msgs = [
+    { event:'command', func:'setVolume', args:[vol] },       /* YouTube IFrame API */
+    { type:'setVolume', value: vol/100 },
+    { type:'setVolume', volume: vol/100 },
+    { action:'setVolume', value: vol/100 },
+    { command:'setVolume', value: vol/100 },
+    { command:'volume', value: vol/100 },
+    { event:'volume', value: vol/100 },
+    { event:'volumeChange', volume: vol/100 },
+    { volume: vol/100 }
+  ];
+  msgs.forEach(function(m){
+    try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+    try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+  });
+
+  console.log('[v11.6] 🔊 Volume → ' + vol + '%');
+}
+
+/* ═══════════════════════════════════════════════════════
+   2. CHÈN SLIDER VOLUME VÀO MODAL
+   ═══════════════════════════════════════════════════════ */
+function injectVolumeUI(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  if(modal.querySelector('#zwp-vol-wrap')) return;
+
+  var foot = modal.querySelector('#zwp-foot');
+  if(!foot) return;
+
+  var wrap = document.createElement('div');
+  wrap.id = 'zwp-vol-wrap';
+  wrap.style.cssText = 'display:flex;align-items:center;gap:7px;flex-shrink:0;';
+  wrap.innerHTML = `
+    <button id="zwp-vol-btn" title="Bật/Tắt tiếng" style="
+      width:40px;height:40px;border-radius:11px;
+      display:flex;align-items:center;justify-content:center;
+      background:rgba(34,211,238,0.14);
+      border:2px solid rgba(34,211,238,0.55);
+      color:#a5f3fc;font-size:17px;cursor:pointer;font-family:inherit;
+      transition:transform 0.15s, background 0.2s;
+    ">🔊</button>
+    <input id="zwp-vol-slider" type="range" min="0" max="100" value="${currentVolume}" style="
+      width:100px;height:6px;accent-color:#22d3ee;cursor:pointer;
+    " />
+    <span id="zwp-vol-val" style="
+      color:#22d3ee;font-weight:900;font-size:11px;
+      min-width:38px;text-align:right;
+      font-family:ui-monospace,monospace;
+      text-shadow:0 0 8px rgba(34,211,238,0.7);
+    ">${currentVolume}%</span>
+  `;
+
+  var info = foot.querySelector('.info');
+  if(info && info.nextSibling){
+    foot.insertBefore(wrap, info.nextSibling);
+  } else {
+    foot.appendChild(wrap);
+  }
+
+  var slider = wrap.querySelector('#zwp-vol-slider');
+  var valEl = wrap.querySelector('#zwp-vol-val');
+  var btn = wrap.querySelector('#zwp-vol-btn');
+
+  slider.oninput = function(){
+    currentVolume = parseInt(slider.value);
+    valEl.textContent = currentVolume + '%';
+    updateVolIcon(btn);
+    sendVolume(currentVolume);
+    try{ localStorage.setItem(VOL_KEY, String(currentVolume)); }catch(e){}
+  };
+
+  btn.onclick = function(){
+    if(currentVolume === 0){
+      currentVolume = 100;
+    } else {
+      currentVolume = 0;
+    }
+    slider.value = currentVolume;
+    valEl.textContent = currentVolume + '%';
+    updateVolIcon(btn);
+    sendVolume(currentVolume);
+    try{ localStorage.setItem(VOL_KEY, String(currentVolume)); }catch(e){}
+  };
+
+  updateVolIcon(btn);
+  console.log('[v11.6] 🎚️ Volume UI đã chèn — hiện tại ' + currentVolume + '%');
+}
+
+function updateVolIcon(btn){
+  if(!btn) return;
+  if(currentVolume === 0) btn.textContent = '🔇';
+  else if(currentVolume < 50) btn.textContent = '🔉';
+  else btn.textContent = '🔊';
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. TỰ BOOST VOLUME KHI PHÁT NHẠC
+   ═══════════════════════════════════════════════════════ */
+function autoBoost(){
+  sendVolume(currentVolume);
+}
+
+/* Khi bấm mini / play → chờ iframe load rồi boost */
+document.addEventListener('click', function(e){
+  var t = e.target.closest('#zwp-mini, #zwp-play, #zwp-list .it');
+  if(!t) return;
+  setTimeout(autoBoost, 500);
+  setTimeout(autoBoost, 1500);
+  setTimeout(autoBoost, 3000);
+}, true);
+
+/* Poll: khi iframe mới được tạo → boost nhiều lần */
+var lastIframeSrc = '';
+setInterval(function(){
+  var iframe = document.getElementById('zwp-iframe');
+  if(!iframe) return;
+  var cur = iframe.src || '';
+  if(cur !== lastIframeSrc && cur !== 'about:blank'){
+    lastIframeSrc = cur;
+    /* Boost 3 lần để chắc chắn */
+    setTimeout(autoBoost, 600);
+    setTimeout(autoBoost, 1500);
+    setTimeout(autoBoost, 3000);
+  }
+}, 700);
+
+/* ═══════════════════════════════════════════════════════
+   4. AUTO PAUSE + KILL AUDIO KHI VÀO TRẬN
+   ═══════════════════════════════════════════════════════ */
+function isPlayingGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i = 0; i < hs.length; i++){
+    if(hs[i].textContent === 'TỬ TRẬN') return false;
+  }
+  return true;
+}
+
+function killMusic(){
+  /* ── Bước 1: thử pause qua postMessage ── */
+  var iframe = document.getElementById('zwp-iframe');
+  if(iframe){
+    var pauseMsgs = [
+      { event:'command', func:'pauseVideo', args:[] },
+      { event:'command', func:'pause', args:[] },
+      { type:'pause' },
+      { action:'pause' },
+      { command:'pause' },
+      { event:'pause' }
+    ];
+    pauseMsgs.forEach(function(m){
+      try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+      try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+    });
+
+    /* ── Bước 2: same-origin pause ── */
+    try{
+      var doc = iframe.contentDocument || iframe.contentWindow.document;
+      if(doc){
+        doc.querySelectorAll('audio, video').forEach(function(m){
+          try{ m.pause(); m.muted = true; m.volume = 0; }catch(e){}
+        });
+      }
+    }catch(e){}
+
+    /* ── Bước 3: FALLBACK mạnh — sau 350ms nếu vẫn còn src → set about:blank ──
+       Đây là cách DUY NHẤT chắc chắn 100% tắt audio cross-origin */
+    setTimeout(function(){
+      var f = document.getElementById('zwp-iframe');
+      if(f && f.src && f.src !== 'about:blank' && f.parentNode){
+        /* Lưu URL để phát lại khi ra menu */
+        try{ f.dataset.lastUrl = f.dataset.lastUrl || f.src; }catch(e){}
+        /* Xóa iframe khỏi DOM — audio tắt ngay lập tức */
+        if(f.parentNode) f.parentNode.removeChild(f);
+        console.log('%c[v11.6] 🔇 Đã xóa iframe — nhạc tắt hoàn toàn','color:#ef4444;font-weight:900');
+      }
+    }, 350);
+  }
+
+  /* ── Update state qua API ── */
+  if(window.__ZNP_WEB && window.__ZNP_WEB.state){
+    var s = window.__ZNP_WEB.state();
+    /* Set state = false (không thể ghi trực tiếp, nhưng mini sẽ update qua poll) */
+  }
+
+  /* ── Mini player: cập nhật UI ── */
+  var mini = document.getElementById('zwp-mini');
+  if(mini){
+    mini.classList.remove('playing');
+    mini.style.opacity = '0';
+    mini.style.pointerEvents = 'none';
+    mini.style.transform = 'translateX(-200px)';
+    var ic = document.getElementById('zwp-mini-ic');
+    if(ic) ic.textContent = '🎵';
+    var t2 = document.getElementById('zwp-mini-t2');
+    if(t2) t2.textContent = 'Nhạc đã tắt (đang trong trận)';
+  }
+
+  /* ── Đóng modal nếu đang mở ── */
+  var modal = document.getElementById('zwp-modal');
+  if(modal){
+    modal.classList.remove('open');
+    modal.style.transform = 'translateX(-99999px)';
+    modal.style.opacity = '0';
+    modal.style.pointerEvents = 'none';
+  }
+}
+
+/* Theo dõi transition menu ↔ trận */
+var _lastP = null;
+setInterval(function(){
+  var p = isPlayingGame();
+  if(p !== _lastP){
+    if(p){
+      /* Vừa vào trận → kill nhạc */
+      killMusic();
+      console.log('%c[v11.6] 🎮 Vào trận → tắt nhạc','color:#f87171;font-weight:900');
+    } else {
+      /* Vừa ra menu → hiện mini player (nhạc vẫn tắt, chờ user bấm play) */
+      var mini = document.getElementById('zwp-mini');
+      if(mini){
+        mini.style.opacity = '1';
+        mini.style.pointerEvents = 'auto';
+        mini.style.transform = '';
+      }
+      console.log('%c[v11.6] 🏠 Ra menu → bấm mini player để phát nhạc','color:#22d3ee;font-weight:900');
+    }
+    _lastP = p;
+  }
+}, 400);
+
+/* ═══════════════════════════════════════════════════════
+   5. PATCH HÀM playCurrent — tự tạo lại iframe nếu bị xóa
+   ═══════════════════════════════════════════════════════ */
+function ensurePlayWorks(){
+  if(!window.__ZNP_WEB || !window.__ZNP_WEB.play) return;
+
+  var origPlay = window.__ZNP_WEB.play;
+  window.__ZNP_WEB.play = function(){
+    /* Nếu iframe đã bị xóa → tạo lại */
+    var iframe = document.getElementById('zwp-iframe');
+    var body = document.getElementById('zwp-body');
+
+    if(!iframe && body){
+      var cur = null;
+      try{
+        var list = window.__ZNP_WEB.list ? window.__ZNP_WEB.list() : [];
+        var s = window.__ZNP_WEB.state ? window.__ZNP_WEB.state() : null;
+        cur = list.filter(function(x){ return s && x.id === s.currentId; })[0] || list[0];
+      }catch(e){}
+
+      if(cur){
+        var newIf = document.createElement('iframe');
+        newIf.id = 'zwp-iframe';
+        newIf.dataset.songId = cur.id;
+        newIf.src = cur.url;
+        newIf.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+        newIf.allowFullscreen = true;
+        newIf.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#000;';
+        body.appendChild(newIf);
+        console.log('[v11.6] 🔄 Đã tạo lại iframe cho: ' + cur.title);
+      }
+    }
+
+    /* Gọi hàm gốc */
+    try{ origPlay(); }catch(e){}
+
+    /* Boost volume sau khi load */
+    setTimeout(autoBoost, 800);
+    setTimeout(autoBoost, 2000);
+    setTimeout(autoBoost, 3500);
+  };
+}
+
+/* Đợi API sẵn sàng rồi patch */
+var patchTimer = setInterval(function(){
+  if(window.__ZNP_WEB && window.__ZNP_WEB.play && !window.__ZNP_WEB.__patched116){
+    window.__ZNP_WEB.__patched116 = true;
+    ensurePlayWorks();
+    clearInterval(patchTimer);
+    console.log('[v11.6] ✅ Đã patch hàm play để tự tạo lại iframe');
+  }
+}, 300);
+
+/* ═══════════════════════════════════════════════════════
+   6. POLL: CHÈN VOLUME UI VÀO MODAL MỖI KHI MỞ
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  injectVolumeUI();
+  /* Cập nhật icon theo currentVolume nếu UI đã có nhưng state bị out-of-sync */
+  var btn = document.getElementById('zwp-vol-btn');
+  if(btn) updateVolIcon(btn);
+}, 600);
+
+/* Chèn ngay khi modal mở (MutationObserver cho chắc) */
+if(document.body){
+  var mo = new MutationObserver(function(){
+    injectVolumeUI();
+  });
+  mo.observe(document.body, { childList:true, subtree:true });
+}
+
+/* ═══════════════════════════════════════════════════════
+   7. API TOÀN CỤC
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_VOLUME = {
+  set: function(v){
+    currentVolume = Math.max(0, Math.min(100, v));
+    sendVolume(currentVolume);
+    try{ localStorage.setItem(VOL_KEY, String(currentVolume)); }catch(e){}
+    var slider = document.getElementById('zwp-vol-slider');
+    if(slider) slider.value = currentVolume;
+    var valEl = document.getElementById('zwp-vol-val');
+    if(valEl) valEl.textContent = currentVolume + '%';
+    var btn = document.getElementById('zwp-vol-btn');
+    if(btn) updateVolIcon(btn);
+  },
+  get: function(){ return currentVolume; },
+  max: function(){ window.__ZNP_VOLUME.set(100); },
+  mute: function(){ window.__ZNP_VOLUME.set(0); },
+  killAudio: killMusic
+};
+
+console.log('%c[v11.6] ✅ HOÀN TẤT:', 'color:#22c55e;font-weight:900;font-size:14px');
+console.log('%c   🔊 Nhạc tự boost volume max (100%) khi phát', 'color:#22d3ee;font-size:11px');
+console.log('%c   🎚️ Có slider volume trong bảng menu nhạc', 'color:#22d3ee;font-size:11px');
+console.log('%c   🔇 Vào trận → tự tắt nhạc hoàn toàn', 'color:#22d3ee;font-size:11px');
+console.log('%c   🎮 Ra menu → bấm mini player để phát lại', 'color:#94a3b8;font-size:11px');
+
+})();
+</script>
+<script>
+/* =========================================================
+   🔧 PATCH v11.9 — FIX TRIỆT ĐỂ
+   - Đổi tên: "Tìm Em" / "Không Buồn"
+   - Nút PAUSE: XÓA IFRAME (cách duy nhất work cross-origin)
+   - Nút PLAY: TẠO LẠI IFRAME
+   - Volume slider: <100 dùng postMessage, =0 thì mute thực sự
+   - Nút MUTE: toggle mute bằng xóa/khôi phục iframe
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_V119) return;
+window.__ZNP_V119 = true;
+
+console.log('%c[v11.9] 🔧 Fix pause + volume + tên bài...','color:#22c55e;font-weight:900;font-size:14px');
+
+/* ═══════════════════════════════════════════════════════
+   1. DANH SÁCH BÀI — ĐÃ ĐỔI TÊN
+   ═══════════════════════════════════════════════════════ */
+var SONGS = [
+  {
+    id: 'main',
+    title: 'Tìm Em',
+    sub: 'EdgeOne · Bản 1',
+    icon: '🎵',
+    url: 'https://confident-copper-fjxqd28c.edgeone.dev/'
+  },
+  {
+    id: 'chill',
+    title: 'Không Buồn',
+    sub: 'EdgeOne · Bản 2',
+    icon: '🎧',
+    url: 'https://yearling-peach-ez3z55sj.edgeone.dev/'
+  }
+];
+
+var state = {
+  currentId: 'main',
+  playing: false,
+  muted: false,
+  volume: 100
+};
+
+/* Load volume đã lưu */
+try{
+  var sv = parseInt(localStorage.getItem('znp_web_volume_v1') || '100');
+  if(sv >= 0 && sv <= 100) state.volume = sv;
+}catch(e){}
+
+function getSong(id){
+  for(var i = 0; i < SONGS.length; i++) if(SONGS[i].id === id) return SONGS[i];
+  return SONGS[0];
+}
+
+function esc(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   2. TẠO / XÓA IFRAME
+   ═══════════════════════════════════════════════════════ */
+function createIframe(song){
+  var body = document.getElementById('zwp-body');
+  if(!body) return null;
+
+  /* Xóa iframe cũ nếu có */
+  var old = document.getElementById('zwp-iframe');
+  if(old && old.parentNode) old.parentNode.removeChild(old);
+
+  var iframe = document.createElement('iframe');
+  iframe.id = 'zwp-iframe';
+  iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  iframe.allowFullscreen = true;
+  iframe.style.cssText = 'width:100%;height:100%;border:none;display:block;background:#000;';
+  iframe.dataset.songId = song.id;
+  iframe.src = song.url;
+  body.appendChild(iframe);
+
+  /* Hiển thị spinner khi load */
+  var load = document.getElementById('zwp-load');
+  if(load){
+    load.style.display = 'flex';
+    load.style.opacity = '1';
+  } else if(!load){
+    load = document.createElement('div');
+    load.id = 'zwp-load';
+    load.innerHTML = '<div style="width:44px;height:44px;border:3px solid rgba(34,211,238,0.25);border-top-color:#22d3ee;border-radius:50%;animation:zwpSpin 0.75s linear infinite"></div><div style="color:#67e8f9;font-weight:900;font-size:13px;letter-spacing:1px">Đang tải nhạc...</div>';
+    load.style.cssText = 'position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:linear-gradient(135deg,rgba(13,21,39,0.96),rgba(26,14,46,0.96));transition:opacity 0.4s;';
+    body.appendChild(load);
+  }
+
+  iframe.onload = function(){
+    var l = document.getElementById('zwp-load');
+    if(l){
+      l.style.opacity = '0';
+      setTimeout(function(){ if(l.parentNode) l.remove(); }, 450);
+    }
+  };
+
+  /* Timeout ẩn spinner sau 3s */
+  setTimeout(function(){
+    var l = document.getElementById('zwp-load');
+    if(l && l.parentNode){
+      l.style.opacity = '0';
+      setTimeout(function(){ if(l.parentNode) l.remove(); }, 450);
+    }
+  }, 3000);
+
+  return iframe;
+}
+
+function destroyIframe(){
+  var iframe = document.getElementById('zwp-iframe');
+  if(iframe && iframe.parentNode){
+    /* Cách duy nhất chắc chắn tắt audio cross-origin */
+    iframe.src = 'about:blank';
+    iframe.parentNode.removeChild(iframe);
+    console.log('%c[v11.9] 🔇 Đã xóa iframe — audio tắt','color:#ef4444;font-weight:900');
+    return true;
+  }
+  return false;
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. PLAY / PAUSE — DÙNG CÁCH XÓA/TẠO IFRAME
+   ═══════════════════════════════════════════════════════ */
+function playById(id){
+  var song = getSong(id);
+  if(!song) return;
+
+  /* Cùng bài + đang phát → pause */
+  if(id === state.currentId && state.playing){
+    pauseAudio();
+    return;
+  }
+
+  state.currentId = id;
+  state.muted = false;
+
+  createIframe(song);
+  state.playing = true;
+
+  /* Boost volume qua postMessage */
+  setTimeout(applyVolume, 800);
+  setTimeout(applyVolume, 2000);
+  setTimeout(applyVolume, 3500);
+
+  updateAll();
+  injectList();
+  console.log('[v11.9] ▶️ Đang phát:', song.title);
+}
+
+function pauseAudio(){
+  /* ⚡ Cách duy nhất chắc chắn: XÓA iframe */
+  destroyIframe();
+  state.playing = false;
+  updateAll();
+  injectList();
+  console.log('[v11.9] ⏸️ Đã pause (xóa iframe)');
+}
+
+function toggleAudio(){
+  if(state.playing){
+    pauseAudio();
+  } else {
+    /* Phát lại bài hiện tại → tạo iframe mới */
+    playById(state.currentId);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   4. VOLUME — POST MESSAGE + MUTE THỰC SỰ
+   ═══════════════════════════════════════════════════════ */
+function applyVolume(){
+  var iframe = document.getElementById('zwp-iframe');
+  if(!iframe) return;
+
+  var v = state.muted ? 0 : state.volume;
+
+  /* Gửi postMessage đa format */
+  var msgs = [
+    { event:'command', func:'setVolume', args:[v] },
+    { type:'setVolume', value: v/100 },
+    { type:'setVolume', volume: v/100 },
+    { action:'setVolume', value: v/100 },
+    { command:'setVolume', value: v/100 },
+    { command:'volume', value: v/100 },
+    { event:'volume', value: v/100 },
+    { event:'volumeChange', volume: v/100 },
+    { volume: v/100 }
+  ];
+  msgs.forEach(function(m){
+    try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+    try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+  });
+
+  /* Same-origin fallback */
+  try{
+    var doc = iframe.contentDocument || iframe.contentWindow.document;
+    if(doc){
+      doc.querySelectorAll('audio, video').forEach(function(m){
+        try{ m.volume = Math.min(1, v/100); m.muted = state.muted; }catch(e){}
+      });
+    }
+  }catch(e){}
+}
+
+function setVolume(v){
+  v = Math.max(0, Math.min(100, v));
+  state.volume = v;
+  state.muted = (v === 0);
+
+  try{ localStorage.setItem('znp_web_volume_v1', String(v)); }catch(e){}
+
+  /* Nếu đang phát → áp dụng ngay */
+  if(state.playing){
+    if(v === 0){
+      /* Volume = 0 → mute thực sự bằng xóa iframe */
+      destroyIframe();
+      console.log('%c[v11.9] 🔇 Volume = 0 → mute','color:#ef4444;font-weight:900');
+    } else {
+      /* Nếu iframe đã bị xóa → tạo lại */
+      var iframe = document.getElementById('zwp-iframe');
+      if(!iframe){
+        createIframe(getSong(state.currentId));
+        setTimeout(applyVolume, 800);
+        setTimeout(applyVolume, 1800);
+        setTimeout(applyVolume, 3000);
+        console.log('%c[v11.9] 🔊 Volume > 0 → tạo lại iframe','color:#22c55e;font-weight:900');
+      } else {
+        applyVolume();
+      }
+    }
+  }
+
+  updateVolumeUI();
+}
+
+function toggleMute(){
+  if(state.muted){
+    /* Unmute → khôi phục volume cũ */
+    setVolume(state.volume || 100);
+  } else {
+    /* Mute → nhớ volume cũ rồi về 0 */
+    state._lastVol = state.volume;
+    setVolume(0);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   5. UPDATE UI VOLUME
+   ═══════════════════════════════════════════════════════ */
+function updateVolumeUI(){
+  var slider = document.getElementById('zwp-vol-slider');
+  var valEl = document.getElementById('zwp-vol-val');
+  var btn = document.getElementById('zwp-vol-btn');
+
+  if(slider) slider.value = state.volume;
+  if(valEl) valEl.textContent = state.volume + '%';
+
+  if(btn){
+    if(state.muted || state.volume === 0) btn.textContent = '🔇';
+    else if(state.volume < 50) btn.textContent = '🔉';
+    else btn.textContent = '🔊';
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   6. INJECT VOLUME UI VÀO MODAL
+   ═══════════════════════════════════════════════════════ */
+function injectVolumeUI(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+  if(modal.querySelector('#zwp-vol-wrap')) return;
+
+  var foot = modal.querySelector('#zwp-foot');
+  if(!foot) return;
+
+  var wrap = document.createElement('div');
+  wrap.id = 'zwp-vol-wrap';
+  wrap.style.cssText = 'display:flex;align-items:center;gap:7px;flex-shrink:0;';
+  wrap.innerHTML =
+    '<button id="zwp-vol-btn" title="Bật/Tắt tiếng" style="' +
+      'width:40px;height:40px;border-radius:11px;' +
+      'display:flex;align-items:center;justify-content:center;' +
+      'background:rgba(34,211,238,0.14);' +
+      'border:2px solid rgba(34,211,238,0.55);' +
+      'color:#a5f3fc;font-size:17px;cursor:pointer;font-family:inherit;' +
+      'transition:transform 0.15s, background 0.2s;' +
+    '">🔊</button>' +
+    '<input id="zwp-vol-slider" type="range" min="0" max="100" value="' + state.volume + '" style="' +
+      'width:100px;height:6px;accent-color:#22d3ee;cursor:pointer;' +
+    '" />' +
+    '<span id="zwp-vol-val" style="' +
+      'color:#22d3ee;font-weight:900;font-size:11px;' +
+      'min-width:38px;text-align:right;' +
+      'font-family:ui-monospace,monospace;' +
+      'text-shadow:0 0 8px rgba(34,211,238,0.7);' +
+    '">' + state.volume + '%</span>';
+
+  var info = foot.querySelector('.info');
+  if(info && info.nextSibling){
+    foot.insertBefore(wrap, info.nextSibling);
+  } else {
+    foot.appendChild(wrap);
+  }
+
+  /* Bind slider */
+  var slider = wrap.querySelector('#zwp-vol-slider');
+  slider.oninput = function(e){
+    e.stopPropagation();
+    setVolume(parseInt(slider.value));
+  };
+  slider.onclick = function(e){ e.stopPropagation(); };
+
+  /* Bind button */
+  var btn = wrap.querySelector('#zwp-vol-btn');
+  btn.onclick = function(e){
+    e.stopPropagation();
+    e.preventDefault();
+    toggleMute();
+  };
+
+  updateVolumeUI();
+  console.log('[v11.9] 🎚️ Volume UI đã chèn');
+}
+
+/* ═══════════════════════════════════════════════════════
+   7. REBUILD PLAYLIST
+   ═══════════════════════════════════════════════════════ */
+function buildListHTML(){
+  var html = '';
+  SONGS.forEach(function(s){
+    var active = (s.id === state.currentId);
+    html +=
+      '<div class="it' + (active ? ' active' : '') + '" data-id="' + s.id + '">' +
+        '<div class="ic">' + s.icon + '</div>' +
+        '<div class="m">' +
+          '<div class="n">' + esc(s.title) + '</div>' +
+          '<div class="s">' + esc(s.sub) + '</div>' +
+        '</div>' +
+        (active && state.playing ? '<div class="badge">▶ ĐANG PHÁT</div>' : '') +
+      '</div>';
+  });
+  return html;
+}
+
+function bindListClicks(list){
+  list.querySelectorAll('.it').forEach(function(el){
+    el.onclick = function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      var id = el.getAttribute('data-id');
+      /* Nếu bấm bài khác → phát bài đó */
+      /* Nếu bấm bài đang phát → pause */
+      playById(id);
+    };
+  });
+}
+
+function injectList(){
+  var card = document.querySelector('#zwp-card');
+  if(!card) return;
+
+  var list = document.getElementById('zwp-list');
+  if(!list){
+    list = document.createElement('div');
+    list.id = 'zwp-list';
+    var foot = card.querySelector('#zwp-foot');
+    if(foot && foot.nextSibling) card.insertBefore(list, foot.nextSibling);
+    else card.appendChild(list);
+  }
+
+  var html = buildListHTML();
+  if(list.innerHTML !== html){
+    list.innerHTML = html;
+    bindListClicks(list);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   8. UPDATE TOÀN BỘ UI
+   ═══════════════════════════════════════════════════════ */
+function updateAll(){
+  var cur = getSong(state.currentId);
+
+  /* Footer */
+  var fn = document.getElementById('zwp-foot-n');
+  var fs = document.getElementById('zwp-foot-s');
+  if(fn) fn.textContent = cur.title;
+  if(fs) fs.textContent = cur.sub;
+
+  /* Nút play/pause */
+  var playBtn = document.getElementById('zwp-play');
+  if(playBtn){
+    if(state.playing){
+      playBtn.classList.remove('paused');
+      playBtn.innerHTML = '⏸';
+    } else {
+      playBtn.classList.add('paused');
+      playBtn.innerHTML = '▶';
+    }
+  }
+
+  /* Header sub */
+  var hsub = document.getElementById('zwp-head-sub');
+  if(hsub) hsub.textContent = cur.title + ' · ' + SONGS.length + ' bài';
+
+  /* Mini player */
+  var mini = document.getElementById('zwp-mini');
+  if(mini){
+    if(state.playing){
+      mini.classList.add('playing');
+      var ic = document.getElementById('zwp-mini-ic');
+      if(ic) ic.textContent = '🎶';
+      var t1 = document.getElementById('zwp-mini-t1');
+      if(t1) t1.textContent = cur.title.toUpperCase();
+      var t2 = document.getElementById('zwp-mini-t2');
+      if(t2) t2.textContent = 'Đang phát · Bấm để điều khiển';
+    } else {
+      mini.classList.remove('playing');
+      var ic2 = document.getElementById('zwp-mini-ic');
+      if(ic2) ic2.textContent = '🎵';
+      var t12 = document.getElementById('zwp-mini-t1');
+      if(t12) t12.textContent = 'NHẠC WEB';
+      var t22 = document.getElementById('zwp-mini-t2');
+      if(t22) t22.textContent = 'Bấm để phát nhạc';
+    }
+  }
+
+  updateVolumeUI();
+}
+
+/* ═══════════════════════════════════════════════════════
+   9. HOOK CONTROLS
+   ═══════════════════════════════════════════════════════ */
+function hookControls(){
+  var modal = document.getElementById('zwp-modal');
+  if(!modal) return;
+
+  var playBtn = modal.querySelector('#zwp-play');
+  if(playBtn && !playBtn.dataset.v119){
+    playBtn.dataset.v119 = '1';
+    playBtn.onclick = function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      toggleAudio();
+    };
+  }
+
+  var prevBtn = modal.querySelector('#zwp-prev');
+  if(prevBtn && !prevBtn.dataset.v119){
+    prevBtn.dataset.v119 = '1';
+    prevBtn.onclick = function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      var idx = 0;
+      for(var i = 0; i < SONGS.length; i++) if(SONGS[i].id === state.currentId) idx = i;
+      playById(SONGS[(idx - 1 + SONGS.length) % SONGS.length].id);
+    };
+  }
+
+  var nextBtn = modal.querySelector('#zwp-next');
+  if(nextBtn && !nextBtn.dataset.v119){
+    nextBtn.dataset.v119 = '1';
+    nextBtn.onclick = function(e){
+      e.stopPropagation();
+      e.preventDefault();
+      var idx = 0;
+      for(var i = 0; i < SONGS.length; i++) if(SONGS[i].id === state.currentId) idx = i;
+      playById(SONGS[(idx + 1) % SONGS.length].id);
+    };
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   10. OVERRIDE API
+   ═══════════════════════════════════════════════════════ */
+function patchAPI(){
+  if(!window.__ZNP_WEB) return false;
+  if(window.__ZNP_WEB.__v119) return true;
+  window.__ZNP_WEB.__v119 = true;
+
+  window.__ZNP_WEB.list = function(){ return SONGS.slice(); };
+  window.__ZNP_WEB.playById = playById;
+  window.__ZNP_WEB.play = function(){ playById(state.currentId); };
+  window.__ZNP_WEB.pause = pauseAudio;
+  window.__ZNP_WEB.toggle = toggleAudio;
+  window.__ZNP_WEB.state = function(){
+    return { currentId: state.currentId, playing: state.playing, volume: state.volume, muted: state.muted };
+  };
+
+  var origOpen = window.__ZNP_WEB.open;
+  window.__ZNP_WEB.open = function(){
+    try{ if(origOpen) origOpen(); }catch(e){}
+    setTimeout(function(){ injectVolumeUI(); injectList(); hookControls(); }, 100);
+    setTimeout(function(){ injectVolumeUI(); injectList(); hookControls(); }, 400);
+    setTimeout(function(){ injectVolumeUI(); injectList(); hookControls(); }, 900);
+    setTimeout(function(){ injectVolumeUI(); injectList(); hookControls(); }, 1600);
+  };
+
+  console.log('[v11.9] ✅ Đã override API');
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════
+   11. POLL — CẬP NHẬT LIÊN TỤC
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  var modal = document.getElementById('zwp-modal');
+  if(modal){
+    injectVolumeUI();
+    injectList();
+    hookControls();
+  }
+}, 400);
+
+/* ═══════════════════════════════════════════════════════
+   12. MUTATIONOBSERVER
+   ═══════════════════════════════════════════════════════ */
+function bootMO(){
+  if(!document.body){ setTimeout(bootMO, 200); return; }
+  var mo = new MutationObserver(function(){
+    if(document.getElementById('zwp-modal')){
+      clearTimeout(mo._t);
+      mo._t = setTimeout(function(){
+        injectVolumeUI();
+        injectList();
+        hookControls();
+      }, 80);
+    }
+  });
+  mo.observe(document.body, { childList:true, subtree:true });
+}
+bootMO();
+
+/* ═══════════════════════════════════════════════════════
+   13. BOOT API PATCH
+   ═══════════════════════════════════════════════════════ */
+var tries = 0;
+var bootTimer = setInterval(function(){
+  tries++;
+  if(patchAPI()){
+    clearInterval(bootTimer);
+    console.log('%c[v11.9] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+    console.log('%c   Bài 1: 🎵 Tìm Em','color:#94a3b8;font-size:11px');
+    console.log('%c   Bài 2: 🎧 Không Buông ','color:#94a3b8;font-size:11px');
+    console.log('%c   ⏸️ Pause: xóa iframe (chắc chắn work)','color:#f87171;font-size:11px');
+    console.log('%c   🔊 Volume = 0: mute thực sự','color:#fbbf24;font-size:11px');
+  }
+  if(tries > 40){
+    clearInterval(bootTimer);
+  }
+}, 300);
+
+/* ═══════════════════════════════════════════════════════
+   14. API TOÀN CỤC
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_V119 = {
+  play: playById,
+  pause: pauseAudio,
+  toggle: toggleAudio,
+  mute: toggleMute,
+  setVolume: setVolume,
+  list: SONGS.slice(),
+  state: function(){ return Object.assign({}, state); }
+};
+
+console.log('%c[v11.9] 🎵 Script đã nạp','color:#22c55e;font-weight:900');
+
+})();
+</script>
