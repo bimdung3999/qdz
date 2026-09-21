@@ -16578,3 +16578,398 @@ console.log('%c   → Sử dụng FormSubmit.co AJAX endpoint',
   'color:#94a3b8;font-size:11px');
 })();
 </script>
+<script>
+/* =========================================================
+   📧 PATCH v10.2 — WEB3FORMS INTEGRATION
+   - Thay thế FormSubmit.co bằng Web3Forms
+   - Endpoint: https://api.web3forms.com/submit
+   - Access key: 6c011d62-a639-4af9-a251-5cd0460a0383
+   - Gửi trực tiếp tới Gmail, không cần bấm Send thêm
+   - Override v10.1 cũ, giữ nguyên UI modal v10.0
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_PATCH_V102) return;
+window.__ZNP_PATCH_V102 = true;
+
+/* ── CẤU HÌNH WEB3FORMS ── */
+var WEB3FORMS_KEY  = '6c011d62-a639-4af9-a251-5cd0460a0383';
+var WEB3FORMS_URL  = 'https://api.web3forms.com/submit';
+var TARGET_EMAIL   = 'lequangdung013@gmail.com';  /* chỉ để hiển thị fallback */
+
+console.log('%c[Patch v10.2] 🚀 Web3Forms đang khởi động...',
+  'color:#22c55e;font-weight:900;font-size:13px');
+
+/* =========================================================
+   1. NÂNG CẤP NÚT GỬI TRONG MODAL v10.0
+   ========================================================= */
+function upgradeToWeb3Forms(){
+  var modal = document.getElementById('znp-letter-modal');
+  if(!modal) return false;
+
+  var gmailBtn = modal.querySelector('#w100-gmail');
+  if(!gmailBtn) return false;
+
+  /* Đã upgrade rồi → bỏ qua */
+  if(gmailBtn.dataset.w3f === '1') return true;
+  gmailBtn.dataset.w3f = '1';
+
+  /* Đổi label */
+  gmailBtn.innerHTML = '<span style="font-size:15px">🚀</span><span>GỬI THƯ NGAY</span>';
+  gmailBtn.title = 'Gửi trực tiếp qua Web3Forms';
+
+  /* Override onclick */
+  gmailBtn.onclick = function(e){
+    if(e){ e.preventDefault(); e.stopPropagation(); }
+    sendViaWeb3Forms();
+  };
+
+  /* Nút phụ → fallback Gmail */
+  var mailtoBtn = modal.querySelector('#w100-mailto');
+  if(mailtoBtn && mailtoBtn.dataset.w3f !== '1'){
+    mailtoBtn.dataset.w3f = '1';
+    mailtoBtn.innerHTML = '<span style="font-size:14px">✉️</span><span>GMAIL</span>';
+    mailtoBtn.title = 'Dự phòng: mở Gmail compose';
+    mailtoBtn.onclick = function(e){
+      if(e){ e.preventDefault(); e.stopPropagation(); }
+      openGmailFallback();
+    };
+  }
+
+  console.log('[v10.2] ✅ Đã gắn Web3Forms vào nút gửi');
+  return true;
+}
+
+/* =========================================================
+   2. HÀM GỬI CHÍNH QUA WEB3FORMS
+   ========================================================= */
+function sendViaWeb3Forms(){
+  var modal = document.getElementById('znp-letter-modal');
+  if(!modal) return;
+
+  var nameEl    = modal.querySelector('#w100-name');
+  var emailEl   = modal.querySelector('#w100-email');
+  var subjectEl = modal.querySelector('#w100-subject');
+  var messageEl = modal.querySelector('#w100-message');
+  var gmailBtn  = modal.querySelector('#w100-gmail');
+  var mailtoBtn = modal.querySelector('#w100-mailto');
+
+  /* ── VALIDATE ── */
+  if(!nameEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập họ tên', '#f87171', 2200);
+    nameEl.focus(); return;
+  }
+  if(!subjectEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập tiêu đề', '#f87171', 2200);
+    subjectEl.focus(); return;
+  }
+  if(!messageEl.value.trim()){
+    if(window.__znpToast) window.__znpToast('⚠️ Vui lòng nhập nội dung', '#f87171', 2200);
+    messageEl.focus(); return;
+  }
+  if(messageEl.value.trim().length < 10){
+    if(window.__znpToast) window.__znpToast('⚠️ Nội dung quá ngắn (min 10 ký tự)', '#f87171', 2200);
+    messageEl.focus(); return;
+  }
+
+  /* ── LẤY LOẠI THƯ ── */
+  var categoryId = 'gopy';
+  var cats = modal.querySelectorAll('[data-cat]');
+  for(var i = 0; i < cats.length; i++){
+    var bc = cats[i].style.borderColor || '';
+    /* Nút active có borderColor sáng (không phải xám mặc định) */
+    if(bc && bc.indexOf('71, 85, 105') < 0 && bc.indexOf('71,85,105') < 0
+       && bc !== 'transparent' && bc !== ''){
+      categoryId = cats[i].getAttribute('data-cat');
+      break;
+    }
+  }
+  var catMap = {
+    gopy:  '💡 Góp ý / Đề xuất',
+    ungoh: '💰 Ủng hộ tác giả',
+    baolo: '🐛 Báo lỗi',
+    khac:  '📝 Khác'
+  };
+  var categoryLabel = catMap[categoryId] || 'Khác';
+
+  /* ── BUILD PAYLOAD WEB3FORMS ── */
+  var payload = {
+    access_key: WEB3FORMS_KEY,
+
+    /* Các field chuẩn Web3Forms sẽ format đẹp trong email */
+    subject:    '[Zombie Protocol] ' + subjectEl.value.trim(),
+    from_name:  nameEl.value.trim(),
+    replyto:    emailEl.value.trim() || undefined,  /* để tác giả Reply thẳng */
+
+    /* Nội dung chính */
+    name:       nameEl.value.trim(),
+    email:      emailEl.value.trim() || '(không cung cấp)',
+    message:    messageEl.value.trim(),
+
+    /* Custom fields — Web3Forms vẫn gửi kèm trong mail */
+    '👤 Họ tên':              nameEl.value.trim(),
+    '📧 Email người gửi':     emailEl.value.trim() || '(không cung cấp)',
+    '🏷️ Loại thư':           categoryLabel,
+    '📌 Tiêu đề':             subjectEl.value.trim(),
+    '✍️ Nội dung':            messageEl.value.trim(),
+    '🎮 Phiên bản game':      window.__ZNP_VERSION || 'v8.9.0',
+    '⏰ Thời gian gửi':       new Date().toLocaleString('vi-VN'),
+    '🌐 Trang':               location.href,
+
+    /* Tắt captcha redirect nếu có */
+    botcheck: false
+  };
+
+  /* Xóa field undefined */
+  Object.keys(payload).forEach(function(k){
+    if(payload[k] === undefined) delete payload[k];
+  });
+
+  /* ── UI: LOADING STATE ── */
+  var origHTML   = gmailBtn.innerHTML;
+  var origBg     = gmailBtn.style.background;
+  var origBorder = gmailBtn.style.borderColor;
+  var origCursor = gmailBtn.style.cursor;
+
+  gmailBtn.disabled = true;
+  gmailBtn.style.cursor = 'wait';
+  gmailBtn.style.opacity = '0.9';
+  gmailBtn.style.background = 'linear-gradient(135deg,#f59e0b,#b45309)';
+  gmailBtn.style.borderColor = '#fde68a';
+  gmailBtn.innerHTML =
+    '<span style="display:inline-block;width:14px;height:14px;' +
+      'border:2.5px solid rgba(255,255,255,0.35);' +
+      'border-top-color:#fff;border-radius:50%;' +
+      'animation:w102spin 0.7s linear infinite"></span>' +
+    '<span>ĐANG GỬI...</span>';
+
+  if(mailtoBtn) mailtoBtn.disabled = true;
+
+  /* ── GỬI QUA WEB3FORMS ── */
+  fetch(WEB3FORMS_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  })
+  .then(function(res){
+    /* Web3Forms trả JSON kể cả lỗi */
+    return res.json().then(function(data){
+      return { ok: res.ok, status: res.status, data: data };
+    });
+  })
+  .then(function(result){
+    var data = result.data || {};
+
+    if(result.ok && data.success){
+      /* ── SUCCESS ── */
+      onSendSuccess(modal, gmailBtn, nameEl.value.trim(), emailEl.value.trim());
+      console.log('[v10.2] ✅ Web3Forms gửi thành công:', data);
+    } else {
+      /* Web3Forms trả về lỗi (access key sai, hết quota, ...) */
+      throw new Error(data.message || ('HTTP ' + result.status));
+    }
+  })
+  .catch(function(err){
+    /* ── ERROR: fallback Gmail ── */
+    console.error('[v10.2] ❌ Web3Forms lỗi:', err);
+
+    /* Khôi phục nút */
+    gmailBtn.disabled = false;
+    gmailBtn.style.cursor = origCursor || 'pointer';
+    gmailBtn.style.opacity = '1';
+    gmailBtn.style.background = origBg;
+    gmailBtn.style.borderColor = origBorder;
+    gmailBtn.innerHTML = origHTML;
+    if(mailtoBtn) mailtoBtn.disabled = false;
+
+    if(window.__znpToast){
+      window.__znpToast(
+        '⚠️ Gửi trực tiếp thất bại — mở Gmail dự phòng...',
+        '#fbbf24', 3000
+      );
+    }
+
+    /* Tự động mở Gmail sau 1s */
+    setTimeout(openGmailFallback, 1000);
+  });
+}
+
+/* =========================================================
+   3. SUCCESS STATE
+   ========================================================= */
+function onSendSuccess(modal, gmailBtn, name, email){
+  gmailBtn.style.background = 'linear-gradient(135deg,#22c55e,#15803d)';
+  gmailBtn.style.borderColor = '#86efac';
+  gmailBtn.style.cursor = 'default';
+  gmailBtn.style.opacity = '1';
+  gmailBtn.innerHTML = '<span style="font-size:15px">✅</span><span>GỬI THÀNH CÔNG!</span>';
+
+  if(window.__znpToast){
+    window.__znpToast('✅ Đã gửi thư thành công! Tác giả sẽ phản hồi sớm.', '#22c55e', 4000);
+  }
+
+  /* Xóa nháp */
+  try{ localStorage.removeItem('znp_letter_draft_v1'); }catch(e){}
+
+  /* Banner thành công */
+  showSuccessBanner(modal, name, email);
+
+  /* Đóng modal sau 2.8s */
+  setTimeout(function(){
+    if(typeof window.__ZNP_CLOSE_LETTER === 'function'){
+      window.__ZNP_CLOSE_LETTER();
+    } else {
+      var x = modal.querySelector('#w100-x');
+      if(x) x.click();
+    }
+  }, 2800);
+}
+
+/* =========================================================
+   4. FALLBACK GMAIL COMPOSE
+   ========================================================= */
+function openGmailFallback(){
+  var modal = document.getElementById('znp-letter-modal');
+  if(!modal) return;
+
+  var nameEl    = modal.querySelector('#w100-name');
+  var emailEl   = modal.querySelector('#w100-email');
+  var subjectEl = modal.querySelector('#w100-subject');
+  var messageEl = modal.querySelector('#w100-message');
+
+  var body = (messageEl.value.trim() || '') + '\n\n' +
+             '─────────────\n' +
+             '👤 ' + (nameEl.value.trim() || '') + '\n' +
+             '📧 ' + (emailEl.value.trim() || '(không cung cấp)') + '\n' +
+             '⏰ ' + new Date().toLocaleString('vi-VN') + '\n' +
+             '🎮 Zombie Protocol ' + (window.__ZNP_VERSION || 'v8.9.0');
+
+  var url = 'https://mail.google.com/mail/?view=cm&fs=1' +
+            '&to=' + encodeURIComponent(TARGET_EMAIL) +
+            '&su=' + encodeURIComponent(subjectEl.value.trim() || 'Zombie Protocol') +
+            '&body=' + encodeURIComponent(body);
+
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/* =========================================================
+   5. BANNER THÀNH CÔNG
+   ========================================================= */
+function showSuccessBanner(modal, name, email){
+  var old = modal.querySelector('#w102-success');
+  if(old) old.remove();
+
+  var banner = document.createElement('div');
+  banner.id = 'w102-success';
+  banner.style.cssText =
+    'position:absolute;inset:0;z-index:10;' +
+    'background:rgba(2,6,15,0.97);' +
+    'display:flex;align-items:center;justify-content:center;' +
+    'flex-direction:column;padding:30px;' +
+    'border-radius:17px;text-align:center;' +
+    'animation:w102fade 0.35s ease-out;' +
+    'backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);';
+
+  banner.innerHTML =
+    '<div style="font-size:64px;margin-bottom:12px;' +
+      'animation:w102float 1.6s ease-in-out infinite">🎉</div>' +
+    '<div style="color:#22c55e;font-weight:900;font-size:22px;letter-spacing:2px;' +
+      'text-shadow:0 0 18px rgba(34,197,94,0.85);margin-bottom:10px">' +
+      'GỬI THÀNH CÔNG!' +
+    '</div>' +
+    '<div style="color:#e2e8f0;font-size:13px;line-height:1.7;max-width:400px;margin-bottom:14px">' +
+      'Thư của <b style="color:#fbbf24">' + escapeHTML(name) + '</b>' +
+      ' đã được gửi tới hộp thư tác giả.' +
+    '</div>' +
+    '<div style="color:#94a3b8;font-size:11.5px;line-height:1.6;max-width:360px;' +
+      'padding:10px 14px;border-radius:9px;' +
+      'background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3)">' +
+      '💌 Cảm ơn bạn rất nhiều!<br>' +
+      'Tác giả sẽ đọc và phản hồi sớm nhất có thể.' +
+    '</div>';
+
+  /* Gắn vào inner của modal */
+  var inner = modal.querySelector('div > div');
+  if(inner){
+    inner.style.position = 'relative';
+    inner.appendChild(banner);
+  } else {
+    modal.appendChild(banner);
+  }
+}
+
+function escapeHTML(s){
+  return String(s).replace(/[&<>"]/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+  });
+}
+
+/* =========================================================
+   6. KEYFRAMES
+   ========================================================= */
+if(!document.getElementById('w102-kf')){
+  var kf = document.createElement('style');
+  kf.id = 'w102-kf';
+  kf.textContent =
+    '@keyframes w102spin{to{transform:rotate(360deg)}}' +
+    '@keyframes w102fade{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}' +
+    '@keyframes w102float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}';
+  document.head.appendChild(kf);
+}
+
+/* =========================================================
+   7. HOOK VÀO MODAL — MutationObserver + Poll
+   ========================================================= */
+var _w3fMO = new MutationObserver(function(muts){
+  for(var i = 0; i < muts.length; i++){
+    var added = muts[i].addedNodes;
+    for(var j = 0; j < added.length; j++){
+      var n = added[j];
+      if(n.nodeType !== 1) continue;
+      if(n.id === 'znp-letter-modal' ||
+         (n.querySelector && n.querySelector('#znp-letter-modal'))){
+        setTimeout(upgradeToWeb3Forms, 50);
+        setTimeout(upgradeToWeb3Forms, 300);
+        setTimeout(upgradeToWeb3Forms, 800);
+      }
+    }
+  }
+});
+
+function bootW3F(){
+  if(!document.body){
+    setTimeout(bootW3F, 200);
+    return;
+  }
+  _w3fMO.observe(document.body, { childList: true, subtree: true });
+  console.log('[v10.2] MutationObserver đang chờ modal gửi thư...');
+}
+bootW3F();
+
+/* Fallback poll */
+setInterval(function(){
+  if(document.getElementById('znp-letter-modal')){
+    upgradeToWeb3Forms();
+  }
+}, 400);
+
+/* =========================================================
+   8. API TOÀN CỤC
+   ========================================================= */
+window.__ZNP_SEND_LETTER     = sendViaWeb3Forms;
+window.__ZNP_WEB3FORMS_KEY   = WEB3FORMS_KEY;
+window.__ZNP_WEB3FORMS_URL   = WEB3FORMS_URL;
+
+console.log('%c[Patch v10.2] ✅ Web3Forms đã sẵn sàng',
+  'color:#22c55e;font-weight:900;font-size:13px');
+console.log('%c   → Endpoint: ' + WEB3FORMS_URL,
+  'color:#94a3b8;font-size:11px');
+console.log('%c   → Access key: ' + WEB3FORMS_KEY.substring(0, 12) + '...',
+  'color:#94a3b8;font-size:11px');
+console.log('%c   → Nút "🚀 GỬI THƯ NGAY" sẽ dùng Web3Forms thay vì FormSubmit',
+  'color:#22d3ee;font-size:11px');
+})();
+</script>
