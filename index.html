@@ -19039,7 +19039,7 @@ var SONGS = [
   },
   {
     id: 'khongbuon',
-    title: 'Không Buồn',
+    title: 'Không Buông',
     sub: 'EdgeOne · Bản 2',
     icon: '🎧',
     url: 'https://yearling-peach-ez3z55sj.edgeone.dev/'
@@ -21046,6 +21046,3091 @@ console.log('%c[v13.0] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size
 console.log('%c   ❌ Slider đã bị xóa hoàn toàn (không thể tạo lại)','color:#ef4444;font-size:11px');
 console.log('%c   🛡️ Iframe nhạc được bảo vệ khi trong trận + toggle BẬT','color:#22d3ee;font-size:11px');
 console.log('%c   🎵 Nhạc sẽ tự tạo lại nếu bị xóa','color:#fbbf24;font-size:11px');
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 MUSIC PLAYER v14.0 — REDESIGN + AUTO-NEXT
+   - Giao diện mới: glassmorphism + visualizer
+   - Thanh tiến trình + thời gian thực (timer-based)
+   - TỰ ĐỘNG CHUYỂN BÀI khi hết (nút 🔁)
+   - Playlist dạng card đẹp
+   - Volume −/Mute/+ (nút bấm)
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_MUSIC_V14) return;
+window.__ZNP_MUSIC_V14 = true;
+
+console.log('%c[Music v14] 🎵 Khởi động...','color:#22d3ee;font-weight:900;font-size:14px');
+
+/* ═══════════════════════════════════════════════════════
+   📀 DANH SÁCH NHẠC (thêm duration = tổng giây bài hát)
+   ═══════════════════════════════════════════════════════ */
+var SONGS = [
+  {
+    id:'timem', title:'Tìm Em', sub:'EdgeOne · Bản 1', icon:'🎵', color:'#22d3ee',
+    url:'https://confident-copper-fjxqd28c.edgeone.dev/',
+    duration: 272   /* 4:32 */
+  },
+  {
+    id:'khongbuon', title:'Không Buông', sub:'EdgeOne · Bản 2', icon:'🎧', color:'#a855f7',
+    url:'https://yearling-peach-ez3z55sj.edgeone.dev/',
+    duration: 240   /* 4:00 */
+  },
+  {
+    id:'choanh', title:'Chờ Anh', sub:'EdgeOne · Bản 3', icon:'💜', color:'#f472b6',
+    url:'https://amused-bronze-yllzv2el.edgeone.dev/',
+    duration: 240   /* 4:00 */
+  }
+];
+
+var LS_VOL      = 'znp_music_vol_v14';
+var LS_INBATTLE = 'znp_music_inbattle_v14';
+var LS_AUTONEXT = 'znp_music_autonext_v14';
+
+/* ═══════════════════════════════════════════════════════
+   🧠 STATE
+   ═══════════════════════════════════════════════════════ */
+var state = {
+  currentId: 'timem',
+  playing: false,
+  muted: false,
+  volume: 100,
+  inBattle: false,
+  autoNext: true,
+  startTime: 0,   /* ms timestamp lúc bắt đầu (đã điều chỉnh khi resume) */
+  elapsed: 0,     /* giây — giá trị đóng băng khi pause */
+  timerId: null
+};
+
+try{ var v = parseInt(localStorage.getItem(LS_VOL)||'100'); if(v>=0 && v<=100) state.volume = v; }catch(e){}
+try{ state.inBattle = localStorage.getItem(LS_INBATTLE)==='1'; }catch(e){}
+try{ state.autoNext = localStorage.getItem(LS_AUTONEXT)!=='0'; }catch(e){}
+
+function saveAll(){
+  try{ localStorage.setItem(LS_VOL, String(state.volume)); }catch(e){}
+  try{ localStorage.setItem(LS_INBATTLE, state.inBattle?'1':'0'); }catch(e){}
+  try{ localStorage.setItem(LS_AUTONEXT, state.autoNext?'1':'0'); }catch(e){}
+}
+
+function getSong(id){
+  for(var i=0;i<SONGS.length;i++) if(SONGS[i].id===id) return SONGS[i];
+  return SONGS[0];
+}
+function idxOf(id){
+  for(var i=0;i<SONGS.length;i++) if(SONGS[i].id===id) return i;
+  return 0;
+}
+function esc(s){
+  return String(s).replace(/[&<>"]/g,function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];
+  });
+}
+function fmt(sec){
+  sec = Math.max(0, Math.floor(sec||0));
+  var m = Math.floor(sec/60);
+  var s = sec % 60;
+  return m + ':' + String(s).padStart(2,'0');
+}
+function isPlayingGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i=0;i<hs.length;i++) if(hs[i].textContent === 'TỬ TRẬN') return false;
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════
+   🗑️ KILL OLD PANEL
+   ═══════════════════════════════════════════════════════ */
+var OLD_IDS = [
+  'zwp-mini','zwp-modal','zwp-iframe','zwp-vol-slider','zwp-vol-wrap',
+  'zwp-vol-val','zwp-vol-btn','zwp-btnvol-group','zwp-inbattle-btn',
+  'zmp-web-btn','zmp-web-modal'
+];
+
+function killOld(){
+  OLD_IDS.forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && el.parentNode){
+      if(el.tagName === 'IFRAME'){ try{ el.src = 'about:blank'; }catch(e){} }
+      el.parentNode.removeChild(el);
+    }
+  });
+}
+killOld();
+
+/* Chặn code cũ tạo lại */
+(function blockRecreate(){
+  var origAppend = Node.prototype.appendChild;
+  Node.prototype.appendChild = function(child){
+    if(child && child.id && OLD_IDS.indexOf(child.id) >= 0) return child;
+    return origAppend.apply(this, arguments);
+  };
+  var origInsert = Node.prototype.insertBefore;
+  Node.prototype.insertBefore = function(n, ref){
+    if(n && n.id && OLD_IDS.indexOf(n.id) >= 0) return n;
+    return origInsert.apply(this, arguments);
+  };
+})();
+
+setInterval(killOld, 600);
+
+/* ═══════════════════════════════════════════════════════
+   🎨 CSS
+   ═══════════════════════════════════════════════════════ */
+var CSS = `
+@keyframes zmus-spin { to { transform: rotate(360deg); } }
+@keyframes zmus-fade { from { opacity:0; transform:scale(0.96); } to { opacity:1; transform:scale(1); } }
+@keyframes zmus-bar  { 0%,100%{height:5px;opacity:.6;} 50%{height:22px;opacity:1;} }
+@keyframes zmus-bar2 { 0%,100%{height:14px;} 50%{height:5px;} }
+@keyframes zmus-bar3 { 0%,100%{height:8px;} 30%{height:20px;} 70%{height:6px;} }
+@keyframes zmus-glow { 0%,100%{box-shadow:0 0 20px rgba(34,211,238,.6);} 50%{box-shadow:0 0 32px rgba(34,211,238,1);} }
+@keyframes zmus-rainbow{0%{background-position:0% 50%;}100%{background-position:300% 50%;}}
+
+/* ══════ MINI WIDGET ══════ */
+#zmus-mini{
+  position:fixed; top:84px; left:20px; z-index:9997;
+  display:flex; align-items:center; gap:10px;
+  padding:8px 13px 8px 10px;
+  border-radius:14px;
+  background:linear-gradient(135deg,rgba(13,21,39,0.96),rgba(26,14,46,0.94));
+  border:2px solid #22d3ee;
+  box-shadow:0 0 20px rgba(34,211,238,.55),0 8px 24px rgba(0,0,0,.6);
+  font-family:system-ui,sans-serif; color:#fff;
+  cursor:pointer; user-select:none; -webkit-user-select:none;
+  transition:transform .2s, box-shadow .3s, opacity .3s;
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  -webkit-tap-highlight-color:transparent;
+  touch-action:manipulation;
+}
+#zmus-mini:hover{ transform:scale(1.04); box-shadow:0 0 30px rgba(34,211,238,1),0 8px 28px rgba(0,0,0,.7); }
+#zmus-mini.playing{ border-color:#fbbf24; box-shadow:0 0 24px rgba(251,191,36,.8),0 8px 24px rgba(0,0,0,.6); }
+#zmus-mini .zmus-mi-ic{
+  width:36px;height:36px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:19px;line-height:1;
+  background:rgba(34,211,238,.18);
+  border:1.5px solid rgba(34,211,238,.55);
+  transition:background .3s;
+}
+#zmus-mini.playing .zmus-mi-ic{ background:rgba(251,191,36,.18); border-color:rgba(251,191,36,.6); }
+#zmus-mini .zmus-mi-info{ display:flex; flex-direction:column; gap:1px; min-width:0; }
+#zmus-mini .zmus-mi-title{ font-size:11.5px;font-weight:900;letter-spacing:.8px;color:#a5f3fc;white-space:nowrap; }
+#zmus-mini.playing .zmus-mi-title{ color:#fde68a; }
+#zmus-mini .zmus-mi-sub{ font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:.4px;white-space:nowrap; }
+#zmus-mini .zmus-mi-bars{ display:flex;align-items:flex-end;gap:2px;height:16px;margin-left:2px; }
+#zmus-mini .zmus-mi-bars span{
+  width:2.5px;background:#22d3ee;border-radius:2px;height:4px;
+}
+#zmus-mini.playing .zmus-mi-bars span{
+  background:#fbbf24; animation:zmus-bar .9s ease-in-out infinite;
+}
+#zmus-mini .zmus-mi-bars span:nth-child(1){ animation-delay:0s; }
+#zmus-mini .zmus-mi-bars span:nth-child(2){ animation-delay:.15s; }
+#zmus-mini .zmus-mi-bars span:nth-child(3){ animation-delay:.3s; }
+#zmus-mini .zmus-mi-bars span:nth-child(4){ animation-delay:.45s; }
+
+/* ══════ MODAL ══════ */
+#zmus-modal{
+  position:fixed; inset:0; z-index:2147483600;
+  background:rgba(2,6,15,.96);
+  display:none; align-items:center; justify-content:center;
+  padding:14px; overflow-y:auto;
+  font-family:system-ui,sans-serif;
+  backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+  animation:zmus-fade .28s ease-out;
+}
+#zmus-modal.open{ display:flex; }
+
+#zmus-card{
+  width:100%; max-width:460px; margin:auto;
+  padding:3px; border-radius:22px;
+  background:linear-gradient(90deg,#22d3ee,#a855f7,#f472b6,#fbbf24,#22d3ee);
+  background-size:300% 100%;
+  animation:zmus-rainbow 6s linear infinite;
+  box-shadow:0 0 50px rgba(34,211,238,.5),0 20px 60px rgba(0,0,0,.85);
+}
+#zmus-inner{
+  background:linear-gradient(160deg,#0d1527 0%,#0a0f1a 45%,#1a0e2e 100%);
+  border-radius:19px;
+  padding:18px 18px 16px;
+  color:#fff;
+  max-height:94vh; overflow-y:auto;
+}
+
+/* Header */
+#zmus-head{
+  display:flex; justify-content:space-between; align-items:center; gap:10px;
+  padding-bottom:12px; margin-bottom:14px;
+  border-bottom:1.5px solid rgba(34,211,238,.28);
+}
+#zmus-head .zmus-brand{ display:flex; align-items:center; gap:11px; min-width:0; }
+#zmus-head .zmus-logo{
+  width:44px;height:44px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;flex-shrink:0;
+  background:linear-gradient(135deg,rgba(34,211,238,.25),rgba(168,85,247,.25));
+  border:2px solid rgba(34,211,238,.6);
+  box-shadow:0 0 16px rgba(34,211,238,.55);
+}
+#zmus-head .zmus-title{ color:#fff;font-weight:900;font-size:14px;letter-spacing:1.5px; }
+#zmus-head .zmus-subtitle{ color:#94a3b8;font-size:10px;font-weight:700;letter-spacing:.5px;margin-top:1px; }
+#zmus-head .zmus-actions{ display:flex; gap:7px; flex-shrink:0; }
+.zmus-iconbtn{
+  width:36px;height:36px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(34,211,238,.12); border:1.5px solid rgba(34,211,238,.5);
+  color:#a5f3fc; font-size:15px; font-weight:900;
+  cursor:pointer; font-family:inherit;
+  transition:transform .15s, background .2s, color .2s;
+}
+.zmus-iconbtn:hover{ transform:scale(1.08); background:rgba(34,211,238,.25); }
+.zmus-iconbtn.close{ background:rgba(239,68,68,.18); border-color:rgba(239,68,68,.6); color:#fca5a5; }
+.zmus-iconbtn.close:hover{ background:rgba(239,68,68,.35); }
+
+/* Visualizer */
+#zmus-viz{
+  display:flex; align-items:flex-end; justify-content:center; gap:4px;
+  height:36px; margin-bottom:12px;
+}
+#zmus-viz span{
+  width:4px; background:linear-gradient(180deg,#22d3ee,#a855f7);
+  border-radius:3px; height:5px; opacity:.4;
+  transition:opacity .3s;
+}
+#zmus-modal.playing #zmus-viz span{
+  opacity:1;
+  animation:zmus-bar 1s ease-in-out infinite;
+}
+#zmus-modal.playing #zmus-viz span:nth-child(3n)  { animation:zmus-bar2 .8s ease-in-out infinite; }
+#zmus-modal.playing #zmus-viz span:nth-child(3n+1){ animation:zmus-bar3 1.2s ease-in-out infinite; }
+#zmus-viz span:nth-child(1){ animation-delay:0s; }
+#zmus-viz span:nth-child(2){ animation-delay:.1s; }
+#zmus-viz span:nth-child(3){ animation-delay:.2s; }
+#zmus-viz span:nth-child(4){ animation-delay:.3s; }
+#zmus-viz span:nth-child(5){ animation-delay:.15s; }
+#zmus-viz span:nth-child(6){ animation-delay:.25s; }
+#zmus-viz span:nth-child(7){ animation-delay:.35s; }
+#zmus-viz span:nth-child(8){ animation-delay:.05s; }
+#zmus-viz span:nth-child(9){ animation-delay:.45s; }
+#zmus-viz span:nth-child(10){ animation-delay:.2s; }
+
+/* Now playing */
+#zmus-nowplaying{ text-align:center; margin-bottom:12px; }
+#zmus-np-title{
+  color:#fff;font-weight:900;font-size:19px;letter-spacing:.5px;
+  text-shadow:0 0 12px rgba(34,211,238,.6);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#zmus-np-sub{ color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:.5px;margin-top:3px; }
+
+/* Progress */
+#zmus-progress{ margin-bottom:14px; }
+#zmus-bar{
+  position:relative; height:8px; border-radius:99px; overflow:hidden;
+  background:rgba(15,23,42,.7);
+  border:1px solid rgba(34,211,238,.22);
+  box-shadow:inset 0 1px 4px rgba(0,0,0,.5);
+  cursor:pointer;
+}
+#zmus-fill{
+  height:100%; width:0%;
+  background:linear-gradient(90deg,#22d3ee,#a855f7);
+  border-radius:99px;
+  box-shadow:0 0 14px rgba(34,211,238,.85);
+  transition:width .35s linear;
+}
+#zmus-fill::after{
+  content:''; position:absolute; top:50%; right:0;
+  width:14px; height:14px; border-radius:50%;
+  transform:translate(50%,-50%);
+  background:linear-gradient(135deg,#fff,#a5f3fc);
+  box-shadow:0 0 12px rgba(34,211,238,1);
+  display:none;
+}
+#zmus-progress:hover #zmus-fill::after{ display:block; }
+#zmus-time{
+  display:flex; justify-content:space-between;
+  margin-top:6px; font-family:ui-monospace,monospace;
+  font-size:11px; font-weight:900; color:#94a3b8;
+}
+#zmus-cur{ color:#22d3ee; text-shadow:0 0 8px rgba(34,211,238,.7); }
+#zmus-dur{ color:#64748b; }
+
+/* Controls */
+#zmus-controls{
+  display:flex; justify-content:center; align-items:center;
+  gap:14px; margin-bottom:14px;
+}
+.zmus-ctrl{
+  width:48px;height:48px;border-radius:14px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(34,211,238,.12);
+  border:2px solid rgba(34,211,238,.5);
+  color:#a5f3fc; font-size:19px;
+  cursor:pointer; font-family:inherit;
+  transition:transform .15s, background .2s, box-shadow .2s;
+}
+.zmus-ctrl:hover{ transform:scale(1.08); background:rgba(34,211,238,.25); box-shadow:0 0 16px rgba(34,211,238,.7); }
+.zmus-ctrl:active{ transform:scale(.94); }
+.zmus-ctrl.main{
+  width:60px;height:60px;font-size:26px;
+  background:linear-gradient(135deg,#22c55e,#15803d);
+  border-color:#86efac;
+  color:#fff;
+  box-shadow:0 0 22px rgba(34,197,94,.75);
+}
+.zmus-ctrl.main:hover{ box-shadow:0 0 32px rgba(34,197,94,1); }
+.zmus-ctrl.main.paused{
+  background:linear-gradient(135deg,#f59e0b,#b45309);
+  border-color:#fde68a;
+  box-shadow:0 0 22px rgba(245,158,11,.75);
+}
+.zmus-ctrl.auto{ width:42px; height:42px; font-size:17px; }
+.zmus-ctrl.auto.on{
+  background:linear-gradient(135deg,rgba(168,85,247,.35),rgba(124,58,237,.25));
+  border-color:#c4b5fd;
+  color:#fff;
+  box-shadow:0 0 16px rgba(168,85,247,.75);
+}
+.zmus-ctrl.auto.on::after{
+  content:''; position:absolute;
+}
+
+/* Iframe hidden */
+#zmus-iframe-wrap{
+  width:1px;height:1px;overflow:hidden;
+  position:absolute; opacity:.01;
+  pointer-events:none; bottom:0; left:0;
+}
+
+/* Footer */
+#zmus-foot{
+  display:flex; justify-content:space-between; align-items:center;
+  gap:10px; padding-top:12px;
+  border-top:1.5px solid rgba(34,211,238,.22);
+  flex-wrap:wrap;
+}
+.zmus-vol{
+  display:flex; align-items:center; gap:5px;
+  padding:4px 6px; border-radius:12px;
+  background:rgba(10,15,29,.6);
+  border:1.5px solid rgba(34,211,238,.28);
+}
+.zmus-vbtn{
+  width:34px;height:34px;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(168,85,247,.1));
+  border:1.5px solid rgba(34,211,238,.5);
+  color:#a5f3fc; font-size:16px; font-weight:900;
+  cursor:pointer; font-family:inherit; padding:0;
+  transition:transform .15s, background .2s, box-shadow .2s;
+}
+.zmus-vbtn:hover{ transform:scale(1.1); background:linear-gradient(135deg,rgba(34,211,238,.32),rgba(168,85,247,.2)); box-shadow:0 0 14px rgba(34,211,238,.75); }
+.zmus-vbtn:active{ transform:scale(.92); }
+.zmus-vbtn.mute{ background:linear-gradient(135deg,rgba(239,68,68,.2),rgba(185,28,28,.15)); border-color:rgba(239,68,68,.55); color:#fca5a5; }
+.zmus-vbtn.on{ background:linear-gradient(135deg,rgba(34,197,94,.25),rgba(22,163,74,.15)); border-color:rgba(34,197,94,.6); color:#86efac; }
+#zmus-vval{
+  color:#22d3ee; font-weight:900; font-size:13px;
+  min-width:46px; text-align:center;
+  font-family:ui-monospace,monospace;
+  text-shadow:0 0 10px rgba(34,211,238,.85);
+  user-select:none;
+}
+.zmus-battlebtn{
+  padding:9px 14px; border-radius:11px;
+  font-family:inherit; font-weight:900; font-size:11px;
+  letter-spacing:.5px; cursor:pointer;
+  border:2px solid; white-space:nowrap;
+  transition:transform .15s, box-shadow .2s;
+}
+.zmus-battlebtn.on{
+  background:linear-gradient(135deg,#22c55e,#15803d);
+  border-color:#86efac; color:#fff;
+  box-shadow:0 0 14px rgba(34,197,94,.7);
+}
+.zmus-battlebtn.off{
+  background:rgba(239,68,68,.15);
+  border-color:rgba(239,68,68,.55);
+  color:#fca5a5;
+}
+.zmus-battlebtn:hover{ transform:scale(1.05); }
+
+/* Playlist */
+#zmus-list{
+  margin-top:14px; padding-top:12px;
+  border-top:1.5px solid rgba(34,211,238,.22);
+}
+#zmus-list .zmus-list-title{
+  color:#22d3ee; font-weight:900; font-size:10px;
+  letter-spacing:1.5px; margin-bottom:8px;
+  display:flex; align-items:center; gap:6px;
+}
+#zmus-list .zmus-list-title::before{ content:''; width:3px; height:12px; background:#22d3ee; border-radius:2px; box-shadow:0 0 8px #22d3ee; }
+.zmus-song{
+  display:flex; align-items:center; gap:11px;
+  padding:10px 12px; border-radius:11px; margin-bottom:6px;
+  background:rgba(15,23,42,.55);
+  border:1.5px solid rgba(71,85,105,.35);
+  cursor:pointer;
+  transition:all .18s;
+}
+.zmus-song:hover{ background:rgba(34,211,238,.08); border-color:rgba(34,211,238,.5); transform:translateX(3px); }
+.zmus-song.active{
+  background:linear-gradient(90deg,rgba(34,211,238,.22),rgba(34,211,238,.05));
+  border-color:rgba(34,211,238,.65);
+  box-shadow:0 0 18px rgba(34,211,238,.35);
+}
+.zmus-song .zmus-s-icon{
+  width:38px;height:38px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+  background:rgba(34,211,238,.14);
+  border:1.5px solid rgba(34,211,238,.4);
+}
+.zmus-song.active .zmus-s-icon{
+  background:rgba(34,211,238,.3);
+  box-shadow:0 0 12px rgba(34,211,238,.7);
+}
+.zmus-song .zmus-s-info{ flex:1; min-width:0; }
+.zmus-song .zmus-s-title{
+  color:#e2e8f0; font-weight:900; font-size:12.5px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.zmus-song.active .zmus-s-title{ color:#a5f3fc; text-shadow:0 0 8px rgba(34,211,238,.7); }
+.zmus-song .zmus-s-sub{
+  color:#64748b; font-size:10px; font-weight:700;
+  margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.zmus-song .zmus-s-badge{
+  font-size:9px; font-weight:900; letter-spacing:.6px;
+  padding:3px 8px; border-radius:6px;
+  background:rgba(251,191,36,.2); color:#fbbf24;
+  border:1px solid rgba(251,191,36,.5);
+  white-space:nowrap;
+  animation:zmus-glow 2s ease-in-out infinite;
+}
+.zmus-song .zmus-s-dur{
+  color:#64748b; font-size:10px;
+  font-family:ui-monospace,monospace;
+  font-weight:700;
+  padding:0 4px;
+  white-space:nowrap;
+}
+.zmus-song.active .zmus-s-dur{ color:#22d3ee; }
+
+/* Mobile */
+@media (max-width:600px){
+  #zmus-mini{ top:70px; left:12px; padding:7px 10px 7px 8px; }
+  #zmus-mini .zmus-mi-ic{ width:32px; height:32px; font-size:16px; }
+  #zmus-mini .zmus-mi-title{ font-size:10.5px; }
+  #zmus-mini .zmus-mi-sub{ font-size:8.5px; }
+  #zmus-inner{ padding:16px 14px 14px; }
+  #zmus-np-title{ font-size:16px; }
+  .zmus-ctrl{ width:44px; height:44px; font-size:17px; }
+  .zmus-ctrl.main{ width:54px; height:54px; font-size:22px; }
+  .zmus-ctrl.auto{ width:38px; height:38px; font-size:15px; }
+  #zmus-head .zmus-logo{ width:38px; height:38px; font-size:19px; }
+  #zmus-head .zmus-title{ font-size:12px; }
+  .zmus-vbtn{ width:32px; height:32px; font-size:14px; }
+  #zmus-vval{ font-size:12px; min-width:42px; }
+  .zmus-battlebtn{ font-size:10px; padding:8px 12px; }
+}
+`;
+
+var st = document.createElement('style');
+st.id = 'zmus-css-v14';
+st.textContent = CSS;
+document.head.appendChild(st);
+
+/* ═══════════════════════════════════════════════════════
+   🎼 IFRAME — TẠO / XÓA
+   ═══════════════════════════════════════════════════════ */
+function createIframe(song){
+  var wrap = document.getElementById('zmus-iframe-wrap');
+  if(!wrap) return null;
+
+  var old = document.getElementById('zmus-iframe');
+  if(old && old.parentNode){
+    try{ old.src = 'about:blank'; }catch(e){}
+    old.parentNode.removeChild(old);
+  }
+
+  var iframe = document.createElement('iframe');
+  iframe.id = 'zmus-iframe';
+  iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  iframe.allowFullscreen = true;
+  iframe.style.cssText = 'width:400px;height:300px;border:none;';
+  iframe.dataset.songId = song.id;
+  iframe.src = song.url;
+  wrap.appendChild(iframe);
+
+  setTimeout(function(){ applyVolume(); }, 800);
+  setTimeout(function(){ applyVolume(); }, 2000);
+  setTimeout(function(){ applyVolume(); }, 3500);
+
+  return iframe;
+}
+
+function destroyIframe(){
+  var iframe = document.getElementById('zmus-iframe');
+  if(iframe && iframe.parentNode){
+    try{ iframe.src = 'about:blank'; }catch(e){}
+    iframe.parentNode.removeChild(iframe);
+    return true;
+  }
+  return false;
+}
+
+/* ═══════════════════════════════════════════════════════
+   🔊 VOLUME
+   ═══════════════════════════════════════════════════════ */
+function applyVolume(){
+  var iframe = document.getElementById('zmus-iframe');
+  if(!iframe) return;
+  var v = state.muted ? 0 : state.volume;
+  var msgs = [
+    { event:'command', func:'setVolume', args:[v] },
+    { type:'setVolume', value:v/100 },
+    { type:'setVolume', volume:v/100 },
+    { volume:v/100 }
+  ];
+  msgs.forEach(function(m){
+    try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+    try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+  });
+  try{
+    var doc = iframe.contentDocument || iframe.contentWindow.document;
+    if(doc){
+      doc.querySelectorAll('audio, video').forEach(function(a){
+        try{ a.volume = Math.min(1, v/100); a.muted = state.muted; }catch(e){}
+      });
+    }
+  }catch(e){}
+}
+
+/* ═══════════════════════════════════════════════════════
+   ⏱️ TIMER (progress + auto-next)
+   ═══════════════════════════════════════════════════════ */
+function getElapsed(){
+  if(state.playing && state.startTime){
+    return (Date.now() - state.startTime) / 1000;
+  }
+  return state.elapsed;
+}
+
+function tick(){
+  updateProgressUI();
+  var el = getElapsed();
+  var song = getSong(state.currentId);
+  if(el >= song.duration){
+    if(state.autoNext){
+      console.log('%c[Music v14] ⏭️ Hết bài → tự chuyển','color:#22d3ee;font-weight:900');
+      nextSong(true);
+    } else {
+      /* Dừng ở cuối */
+      destroyIframe();
+      state.playing = false;
+      state.elapsed = song.duration;
+      state.startTime = 0;
+      stopTimer();
+      updateAll();
+    }
+  }
+}
+
+function startTimer(){
+  if(state.timerId) return;
+  state.timerId = setInterval(tick, 250);
+}
+function stopTimer(){
+  if(state.timerId){ clearInterval(state.timerId); state.timerId = null; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ▶️ PLAY / PAUSE / NEXT / PREV
+   ═══════════════════════════════════════════════════════ */
+function playById(id){
+  var song = getSong(id);
+  if(!song) return;
+
+  /* Cùng bài + đang phát → pause */
+  if(id === state.currentId && state.playing){
+    pauseAudio();
+    return;
+  }
+
+  var wasSameSong = (id === state.currentId);
+
+  state.currentId = id;
+  state.muted = false;
+
+  createIframe(song);
+  state.playing = true;
+
+  /* Reset timer nếu đổi bài, giữ nếu cùng bài (resume) */
+  if(!wasSameSong){
+    state.startTime = Date.now();
+    state.elapsed = 0;
+  } else {
+    /* Resume: bắt đầu từ elapsed cũ */
+    state.startTime = Date.now() - state.elapsed * 1000;
+  }
+
+  startTimer();
+  updateAll();
+  injectList();
+}
+
+function pauseAudio(){
+  destroyIframe();
+  /* Đóng băng elapsed */
+  if(state.playing && state.startTime){
+    state.elapsed = (Date.now() - state.startTime) / 1000;
+  }
+  state.playing = false;
+  state.startTime = 0;
+  stopTimer();
+  updateAll();
+}
+
+function toggleAudio(){
+  if(state.playing) pauseAudio();
+  else {
+    /* Reset elapsed nếu đã hết bài */
+    var song = getSong(state.currentId);
+    if(state.elapsed >= song.duration) state.elapsed = 0;
+    playById(state.currentId);
+  }
+}
+
+function nextSong(auto){
+  var i = idxOf(state.currentId);
+  var next = SONGS[(i + 1) % SONGS.length];
+  /* Luôn reset timer khi next */
+  state.elapsed = 0;
+  state.startTime = 0;
+  /* Nếu đang phát → tạo iframe mới */
+  var wasPlaying = state.playing || auto;
+  if(wasPlaying){
+    state.currentId = next.id;
+    state.playing = true;
+    createIframe(next);
+    state.startTime = Date.now();
+    startTimer();
+    updateAll();
+    injectList();
+  } else {
+    state.currentId = next.id;
+    updateAll();
+    injectList();
+  }
+}
+
+function prevSong(){
+  var i = idxOf(state.currentId);
+  var prev = SONGS[(i - 1 + SONGS.length) % SONGS.length];
+  state.elapsed = 0;
+  state.startTime = 0;
+  var wasPlaying = state.playing;
+  state.currentId = prev.id;
+  if(wasPlaying){
+    state.playing = true;
+    createIframe(prev);
+    state.startTime = Date.now();
+    startTimer();
+  }
+  updateAll();
+  injectList();
+}
+
+/* ═══════════════════════════════════════════════════════
+   📊 UPDATE UI
+   ═══════════════════════════════════════════════════════ */
+function updateProgressUI(){
+  var song = getSong(state.currentId);
+  var el = Math.min(getElapsed(), song.duration);
+  var pct = song.duration ? (el / song.duration) * 100 : 0;
+  var fill = document.getElementById('zmus-fill');
+  var cur = document.getElementById('zmus-cur');
+  var dur = document.getElementById('zmus-dur');
+  if(fill) fill.style.width = pct + '%';
+  if(cur) cur.textContent = fmt(el);
+  if(dur) dur.textContent = fmt(song.duration);
+}
+
+function updateVolumeUI(){
+  var valEl = document.getElementById('zmus-vval');
+  var muteBtn = document.getElementById('zmus-vmute');
+  if(valEl){
+    valEl.textContent = (state.muted ? '🔇 ' : '') + state.volume + '%';
+    valEl.style.color = state.muted ? '#fca5a5' : (state.volume < 30 ? '#fbbf24' : '#22d3ee');
+  }
+  if(muteBtn){
+    if(state.muted || state.volume === 0){
+      muteBtn.textContent = '🔇'; muteBtn.className = 'zmus-vbtn mute';
+    } else if(state.volume < 50){
+      muteBtn.textContent = '🔉'; muteBtn.className = 'zmus-vbtn';
+    } else {
+      muteBtn.textContent = '🔊'; muteBtn.className = 'zmus-vbtn on';
+    }
+  }
+}
+
+function updateAutoUI(){
+  var auto = document.getElementById('zmus-auto');
+  if(!auto) return;
+  if(state.autoNext){
+    auto.classList.add('on');
+    auto.title = 'Tự chuyển bài: BẬT';
+  } else {
+    auto.classList.remove('on');
+    auto.title = 'Tự chuyển bài: TẮT';
+  }
+}
+
+function updateBattleUI(){
+  var b = document.getElementById('zmus-battle');
+  if(!b) return;
+  if(state.inBattle){
+    b.textContent = '🎮 TRONG TRẬN: BẬT';
+    b.className = 'zmus-battlebtn on';
+  } else {
+    b.textContent = '🎮 TRONG TRẬN: TẮT';
+    b.className = 'zmus-battlebtn off';
+  }
+}
+
+function updateAll(){
+  var song = getSong(state.currentId);
+
+  /* Modal */
+  var modal = document.getElementById('zmus-modal');
+  if(modal) modal.classList.toggle('playing', state.playing);
+
+  var t = document.getElementById('zmus-np-title');
+  var s = document.getElementById('zmus-np-sub');
+  if(t) t.textContent = song.title;
+  if(s) s.textContent = song.sub + ' · ' + fmt(song.duration);
+
+  /* Play button */
+  var playBtn = document.getElementById('zmus-play');
+  if(playBtn){
+    if(state.playing){
+      playBtn.classList.remove('paused');
+      playBtn.textContent = '⏸';
+    } else {
+      playBtn.classList.add('paused');
+      playBtn.textContent = '▶';
+    }
+  }
+
+  /* Mini */
+  var mini = document.getElementById('zmus-mini');
+  if(mini){
+    mini.classList.toggle('playing', state.playing);
+    var mi = document.getElementById('zmus-mi-ic');
+    var mt = document.getElementById('zmus-mi-title');
+    var ms = document.getElementById('zmus-mi-sub');
+    if(state.playing){
+      if(mi) mi.textContent = '🎶';
+      if(mt) mt.textContent = song.title.toUpperCase();
+      if(ms) ms.textContent = fmt(getElapsed()) + ' · đang phát';
+    } else {
+      if(mi) mi.textContent = song.icon;
+      if(mt) mt.textContent = 'NHẠC';
+      if(ms) ms.textContent = 'Bấm để mở';
+    }
+  }
+
+  updateProgressUI();
+  updateVolumeUI();
+  updateAutoUI();
+  updateBattleUI();
+}
+
+/* ═══════════════════════════════════════════════════════
+   📜 PLAYLIST
+   ═══════════════════════════════════════════════════════ */
+function injectList(){
+  var list = document.getElementById('zmus-list');
+  if(!list) return;
+
+  var html = '<div class="zmus-list-title">📀 DANH SÁCH PHÁT</div>';
+
+  SONGS.forEach(function(s){
+    var active = (s.id === state.currentId);
+    html +=
+      '<div class="zmus-song' + (active ? ' active' : '') + '" data-sid="' + s.id + '">' +
+        '<div class="zmus-s-icon">' + s.icon + '</div>' +
+        '<div class="zmus-s-info">' +
+          '<div class="zmus-s-title">' + esc(s.title) + '</div>' +
+          '<div class="zmus-s-sub">' + esc(s.sub) + '</div>' +
+        '</div>' +
+        (active && state.playing
+          ? '<div class="zmus-s-badge">▶ ĐANG PHÁT</div>'
+          : '<div class="zmus-s-dur">' + fmt(s.duration) + '</div>'
+        ) +
+      '</div>';
+  });
+
+  list.innerHTML = html;
+
+  list.querySelectorAll('.zmus-song').forEach(function(el){
+    el.onclick = function(e){
+      e.stopPropagation();
+      var sid = el.getAttribute('data-sid');
+      playById(sid);
+    };
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   🖼️ BUILD MINI WIDGET
+   ═══════════════════════════════════════════════════════ */
+function buildMini(){
+  if(document.getElementById('zmus-mini')) return;
+  var m = document.createElement('div');
+  m.id = 'zmus-mini';
+  m.innerHTML =
+    '<div class="zmus-mi-ic" id="zmus-mi-ic">🎵</div>' +
+    '<div class="zmus-mi-info">' +
+      '<div class="zmus-mi-title" id="zmus-mi-title">NHẠC</div>' +
+      '<div class="zmus-mi-sub" id="zmus-mi-sub">Bấm để mở</div>' +
+    '</div>' +
+    '<div class="zmus-mi-bars"><span></span><span></span><span></span><span></span></div>';
+  m.onclick = function(){
+    openModal();
+    if(!state.playing) playById(state.currentId);
+  };
+  document.body.appendChild(m);
+  updateAll();
+}
+
+/* ═══════════════════════════════════════════════════════
+   🖼️ BUILD MODAL
+   ═══════════════════════════════════════════════════════ */
+function buildModal(){
+  if(document.getElementById('zmus-modal')) return;
+
+  var m = document.createElement('div');
+  m.id = 'zmus-modal';
+
+  var vizBars = '';
+  for(var i=0;i<10;i++) vizBars += '<span></span>';
+
+  m.innerHTML =
+    '<div id="zmus-card">' +
+      '<div id="zmus-inner">' +
+
+        /* Header */
+        '<div id="zmus-head">' +
+          '<div class="zmus-brand">' +
+            '<div class="zmus-logo">🎧</div>' +
+            '<div>' +
+              '<div class="zmus-title">MUSIC PLAYER</div>' +
+              '<div class="zmus-subtitle">Zombie Protocol · Nhạc nền</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="zmus-actions">' +
+            '<button class="zmus-iconbtn" id="zmus-reload" title="Tải lại">↻</button>' +
+            '<button class="zmus-iconbtn" id="zmus-external" title="Mở tab mới">↗</button>' +
+            '<button class="zmus-iconbtn close" id="zmus-close" title="Đóng (Esc)">✕</button>' +
+          '</div>' +
+        '</div>' +
+
+        /* Visualizer */
+        '<div id="zmus-viz">' + vizBars + '</div>' +
+
+        /* Now Playing */
+        '<div id="zmus-nowplaying">' +
+          '<div id="zmus-np-title">Tìm Em</div>' +
+          '<div id="zmus-np-sub">EdgeOne · Bản 1 · 4:32</div>' +
+        '</div>' +
+
+        /* Progress */
+        '<div id="zmus-progress">' +
+          '<div id="zmus-bar"><div id="zmus-fill"></div></div>' +
+          '<div id="zmus-time">' +
+            '<span id="zmus-cur">0:00</span>' +
+            '<span id="zmus-dur">4:32</span>' +
+          '</div>' +
+        '</div>' +
+
+        /* Controls */
+        '<div id="zmus-controls">' +
+          '<button class="zmus-ctrl" id="zmus-prev" title="Bài trước">⏮</button>' +
+          '<button class="zmus-ctrl main paused" id="zmus-play" title="Phát / Tạm dừng">▶</button>' +
+          '<button class="zmus-ctrl" id="zmus-next" title="Bài sau">⏭</button>' +
+          '<button class="zmus-ctrl auto on" id="zmus-auto" title="Tự động chuyển bài">🔁</button>' +
+        '</div>' +
+
+        /* Iframe wrapper (hidden) */
+        '<div id="zmus-iframe-wrap"></div>' +
+
+        /* Footer */
+        '<div id="zmus-foot">' +
+          '<div class="zmus-vol">' +
+            '<button class="zmus-vbtn" id="zmus-vdown" title="Giảm 10%">−</button>' +
+            '<button class="zmus-vbtn on" id="zmus-vmute" title="Bật/Tắt tiếng">🔊</button>' +
+            '<span id="zmus-vval">100%</span>' +
+            '<button class="zmus-vbtn" id="zmus-vup" title="Tăng 10%">+</button>' +
+          '</div>' +
+          '<button class="zmus-battlebtn off" id="zmus-battle">🎮 TRONG TRẬN: TẮT</button>' +
+        '</div>' +
+
+        /* Playlist */
+        '<div id="zmus-list"></div>' +
+
+      '</div>' +
+    '</div>';
+
+  document.body.appendChild(m);
+
+  /* ── Bind controls ── */
+  m.querySelector('#zmus-close').onclick = closeModal;
+  m.querySelector('#zmus-reload').onclick = function(e){
+    e.stopPropagation();
+    if(state.playing){
+      var song = getSong(state.currentId);
+      createIframe(song);
+      state.startTime = Date.now() - state.elapsed * 1000;
+      if(window.__znpToast) window.__znpToast('↻ Đã tải lại','#22d3ee',1400);
+    }
+  };
+  m.querySelector('#zmus-external').onclick = function(e){
+    e.stopPropagation();
+    window.open(getSong(state.currentId).url, '_blank', 'noopener,noreferrer');
+  };
+  m.querySelector('#zmus-play').onclick = function(e){
+    e.stopPropagation(); toggleAudio();
+  };
+  m.querySelector('#zmus-prev').onclick = function(e){
+    e.stopPropagation(); prevSong();
+  };
+  m.querySelector('#zmus-next').onclick = function(e){
+    e.stopPropagation(); nextSong(false);
+  };
+  m.querySelector('#zmus-auto').onclick = function(e){
+    e.stopPropagation();
+    state.autoNext = !state.autoNext;
+    saveAll();
+    updateAutoUI();
+    if(window.__znpToast){
+      window.__znpToast(
+        state.autoNext ? '🔁 Tự chuyển bài: BẬT' : '⏹️ Tự chuyển bài: TẮT',
+        state.autoNext ? '#22c55e' : '#94a3b8', 1800
+      );
+    }
+  };
+
+  /* Volume */
+  m.querySelector('#zmus-vdown').onclick = function(e){
+    e.stopPropagation();
+    setVolume(Math.max(0, state.volume - 10));
+  };
+  m.querySelector('#zmus-vup').onclick = function(e){
+    e.stopPropagation();
+    setVolume(Math.min(100, state.volume + 10));
+  };
+  m.querySelector('#zmus-vmute').onclick = function(e){
+    e.stopPropagation(); toggleMute();
+  };
+
+  /* Battle toggle */
+  m.querySelector('#zmus-battle').onclick = function(e){
+    e.stopPropagation();
+    state.inBattle = !state.inBattle;
+    saveAll();
+    updateBattleUI();
+    if(window.__znpToast){
+      window.__znpToast(
+        state.inBattle ? '🎮 Nhạc phát cả khi vào trận' : '🎮 Nhạc tắt khi vào trận',
+        state.inBattle ? '#22c55e' : '#f87171', 2000
+      );
+    }
+  };
+
+  /* Click bar để "seek" (chỉ cập nhật timer, không seek thật) */
+  m.querySelector('#zmus-bar').onclick = function(e){
+    e.stopPropagation();
+    var rect = this.getBoundingClientRect();
+    var pct = (e.clientX - rect.left) / rect.width;
+    pct = Math.max(0, Math.min(1, pct));
+    var song = getSong(state.currentId);
+    /* Chỉ cập nhật timer — không seek được iframe cross-origin */
+    state.elapsed = song.duration * pct;
+    if(state.playing) state.startTime = Date.now() - state.elapsed * 1000;
+    updateProgressUI();
+    if(window.__znpToast){
+      window.__znpToast('⏩ Đã đặt lại đồng hồ (không seek được iframe)', '#fbbf24', 2000);
+    }
+  };
+
+  /* Click ngoài để đóng */
+  m.onclick = function(e){ if(e.target === m) closeModal(); };
+
+  /* ESC */
+  function esc(e){
+    if(e.key === 'Escape'){
+      document.removeEventListener('keydown', esc, true);
+      closeModal();
+    }
+  }
+  document.addEventListener('keydown', esc, true);
+}
+
+/* ═══════════════════════════════════════════════════════
+   🔓 OPEN / CLOSE
+   ═══════════════════════════════════════════════════════ */
+function openModal(){
+  buildModal();
+  injectList();
+  var m = document.getElementById('zmus-modal');
+  if(!m) return;
+  m.classList.add('open');
+  updateAll();
+}
+function closeModal(){
+  var m = document.getElementById('zmus-modal');
+  if(!m) return;
+  m.classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════════════════
+   🔊 VOLUME HELPERS
+   ═══════════════════════════════════════════════════════ */
+function setVolume(v){
+  v = Math.max(0, Math.min(100, v));
+  state.volume = v;
+  state.muted = (v === 0);
+  saveAll();
+
+  if(state.playing){
+    if(v === 0){
+      /* Mute hẳn: xóa iframe */
+      destroyIframe();
+      console.log('%c[Music v14] 🔇 Volume=0 → mute','color:#f87171;font-weight:900');
+    } else {
+      /* Nếu iframe đã bị xóa → tạo lại */
+      var iframe = document.getElementById('zmus-iframe');
+      if(!iframe){
+        var song = getSong(state.currentId);
+        createIframe(song);
+        if(state.startTime){
+          state.startTime = Date.now() - state.elapsed * 1000;
+        }
+        console.log('%c[Music v14] 🔊 Volume>0 → khôi phục iframe','color:#22c55e;font-weight:900');
+      } else {
+        applyVolume();
+      }
+    }
+  }
+  updateVolumeUI();
+}
+
+function toggleMute(){
+  if(state.muted){
+    setVolume(state.volume || 100);
+  } else {
+    state._lastVol = state.volume;
+    setVolume(0);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   🎮 XỬ LÝ VÀO TRẬN / RA MENU
+   ═══════════════════════════════════════════════════════ */
+var _lastP = null;
+setInterval(function(){
+  var p = isPlayingGame();
+  if(p === _lastP) return;
+  var wasP = _lastP;
+  _lastP = p;
+
+  var mini = document.getElementById('zmus-mini');
+
+  if(p && !wasP){
+    /* VÀO TRẬN */
+    if(!state.inBattle){
+      /* TẮT nhạc */
+      destroyIframe();
+      if(state.playing && state.startTime){
+        state.elapsed = (Date.now() - state.startTime) / 1000;
+      }
+      state.playing = false;
+      state.startTime = 0;
+      stopTimer();
+      console.log('%c[Music v14] 🎮 Vào trận → TẮT nhạc','color:#f87171;font-weight:900');
+    } else {
+      console.log('%c[Music v14] 🎮 Vào trận → GIỮ nhạc','color:#22c55e;font-weight:900');
+    }
+    if(mini){
+      mini.style.opacity = '0';
+      mini.style.pointerEvents = 'none';
+      mini.style.transform = 'translateX(-220px)';
+    }
+    closeModal();
+    updateAll();
+
+  } else if(!p && wasP){
+    /* RA MENU */
+    if(mini){
+      mini.style.opacity = '1';
+      mini.style.pointerEvents = 'auto';
+      mini.style.transform = '';
+    }
+    updateAll();
+    console.log('%c[Music v14] 🏠 Ra menu','color:#22d3ee;font-weight:900');
+  }
+}, 400);
+
+/* ═══════════════════════════════════════════════════════
+   🔧 XỬ LÝ KHI IFRAME BỊ XÓA ĐỘT NGỘT
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  /* Nếu đang playing nhưng iframe biến mất */
+  if(state.playing && state.inBattle && isPlayingGame()){
+    var iframe = document.getElementById('zmus-iframe');
+    if(!iframe){
+      var song = getSong(state.currentId);
+      createIframe(song);
+      if(state.startTime) state.startTime = Date.now() - state.elapsed * 1000;
+      console.log('%c[Music v14] 🔄 Tự khôi phục iframe','color:#fbbf24;font-weight:900');
+    }
+  }
+}, 2000);
+
+/* ═══════════════════════════════════════════════════════
+   🚀 BOOT
+   ═══════════════════════════════════════════════════════ */
+function ready(cb){
+  var r = document.getElementById('root');
+  if(r && r.children.length > 0) return cb();
+  setTimeout(function(){ ready(cb); }, 300);
+}
+
+ready(function(){
+  setTimeout(function(){
+    buildMini();
+    buildModal();
+    injectList();
+    updateAll();
+    console.log('%c[Music v14] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+    console.log('%c   🎵 Thiết kế mới · Auto-next 🔁 · Progress bar · Playlist đẹp','color:#22d3ee;font-size:11px');
+  }, 1600);
+});
+
+/* ═══════════════════════════════════════════════════════
+   🌐 API
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_MUSIC = {
+  open: openModal,
+  close: closeModal,
+  play: function(){ playById(state.currentId); },
+  pause: pauseAudio,
+  toggle: toggleAudio,
+  next: nextSong,
+  prev: prevSong,
+  playById: playById,
+  setVolume: setVolume,
+  toggleMute: toggleMute,
+  setAutoNext: function(v){ state.autoNext = !!v; saveAll(); updateAutoUI(); },
+  setInBattle: function(v){ state.inBattle = !!v; saveAll(); updateBattleUI(); },
+  list: function(){ return SONGS.slice(); },
+  state: function(){
+    return {
+      currentId: state.currentId,
+      playing: state.playing,
+      muted: state.muted,
+      volume: state.volume,
+      inBattle: state.inBattle,
+      autoNext: state.autoNext,
+      elapsed: getElapsed(),
+      duration: getSong(state.currentId).duration
+    };
+  }
+};
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 MUSIC PLAYER v15 — 7 nhạc hot + Nút tua nhạc
+   - Thêm bài "Tổng hợp 7 nhạc hot" lên đầu danh sách
+   - Bổ sung nút tua: 5s · 15s · 30s · 1p · 2p · 3p
+   - Rebuild toàn bộ player (kill v14 cũ để tránh xung đột)
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_MUSIC_V15) return;
+window.__ZNP_MUSIC_V15 = true;
+
+console.log('%c[Music v15] 🎵 Khởi động — 7 nhạc hot + nút tua...',
+  'color:#fbbf24;font-weight:900;font-size:14px');
+
+/* ═══════════════════════════════════════════════════════
+   📀 DANH SÁCH NHẠC — BÀI MỚI LÊN ĐẦU
+   ═══════════════════════════════════════════════════════ */
+var SONGS = [
+  {
+    id:'hot7',
+    title:'Tổng hợp 7 nhạc hot',
+    sub:'Playlist · EdgeOne',
+    icon:'🔥',
+    color:'#fbbf24',
+    url:'https://fat-jade-14gvffmu.edgeone.dev/',
+    duration: 1800            /* ~30 phút — tua thủ công nếu cần */
+  },
+  {
+    id:'timem', title:'Tìm Em', sub:'EdgeOne · Bản 1', icon:'🎵', color:'#22d3ee',
+    url:'https://confident-copper-fjxqd28c.edgeone.dev/',
+    duration: 272
+  },
+  {
+    id:'khongbuon', title:'Không Buông', sub:'EdgeOne · Bản 2', icon:'🎧', color:'#a855f7',
+    url:'https://yearling-peach-ez3z55sj.edgeone.dev/',
+    duration: 240
+  },
+  {
+    id:'choanh', title:'Chờ Anh', sub:'EdgeOne · Bản 3', icon:'💜', color:'#f472b6',
+    url:'https://amused-bronze-yllzv2el.edgeone.dev/',
+    duration: 240
+  }
+];
+
+var LS_VOL      = 'znp_m15_vol';
+var LS_INBATTLE = 'znp_m15_inbattle';
+var LS_AUTONEXT = 'znp_m15_autonext';
+var LS_CUR      = 'znp_m15_cur';
+
+/* ═══════════════════════════════════════════════════════
+   🧠 STATE
+   ═══════════════════════════════════════════════════════ */
+var state = {
+  currentId: 'hot7',
+  playing:   false,
+  muted:     false,
+  volume:    100,
+  inBattle:  false,
+  autoNext:  true,
+  startTime: 0,
+  elapsed:   0,
+  timerId:   null
+};
+
+try{ var v=parseInt(localStorage.getItem(LS_VOL)||'100'); if(v>=0&&v<=100) state.volume=v; }catch(e){}
+try{ state.inBattle = localStorage.getItem(LS_INBATTLE)==='1'; }catch(e){}
+try{ state.autoNext = localStorage.getItem(LS_AUTONEXT)!=='0'; }catch(e){}
+try{ var c = localStorage.getItem(LS_CUR); if(c && SONGS.filter(function(s){return s.id===c;}).length) state.currentId = c; }catch(e){}
+
+function saveAll(){
+  try{ localStorage.setItem(LS_VOL, String(state.volume)); }catch(e){}
+  try{ localStorage.setItem(LS_INBATTLE, state.inBattle?'1':'0'); }catch(e){}
+  try{ localStorage.setItem(LS_AUTONEXT, state.autoNext?'1':'0'); }catch(e){}
+  try{ localStorage.setItem(LS_CUR, state.currentId); }catch(e){}
+}
+
+/* ═══════════════════════════════════════════════════════
+   🧰 HELPERS
+   ═══════════════════════════════════════════════════════ */
+function getSong(id){ for(var i=0;i<SONGS.length;i++) if(SONGS[i].id===id) return SONGS[i]; return SONGS[0]; }
+function idxOf(id){ for(var i=0;i<SONGS.length;i++) if(SONGS[i].id===id) return i; return 0; }
+function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function fmt(sec){ sec=Math.max(0,Math.floor(sec||0)); var m=Math.floor(sec/60), s=sec%60; return m+':'+String(s).padStart(2,'0'); }
+function isPlayingGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs=document.querySelectorAll('h1');
+  for(var i=0;i<hs.length;i++) if(hs[i].textContent==='TỬ TRẬN') return false;
+  return true;
+}
+
+/* ═══════════════════════════════════════════════════════
+   🗑️ KILL v14 + BLOCK RECREATE
+   ═══════════════════════════════════════════════════════ */
+var KILL_IDS = ['zmus-mini','zmus-modal','zmus-iframe','zmus-css-v14','zmus-iframe-wrap'];
+function killOld(){
+  KILL_IDS.forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && el.parentNode){
+      if(el.tagName==='IFRAME') try{ el.src='about:blank'; }catch(e){}
+      el.parentNode.removeChild(el);
+    }
+  });
+}
+killOld();
+setInterval(killOld, 500);
+
+(function blockRecreate(){
+  var oa = Node.prototype.appendChild;
+  Node.prototype.appendChild = function(c){
+    if(c && c.id && KILL_IDS.indexOf(c.id)>=0) return c;
+    return oa.apply(this, arguments);
+  };
+  var oi = Node.prototype.insertBefore;
+  Node.prototype.insertBefore = function(n, r){
+    if(n && n.id && KILL_IDS.indexOf(n.id)>=0) return n;
+    return oi.apply(this, arguments);
+  };
+})();
+
+/* ═══════════════════════════════════════════════════════
+   🎨 CSS
+   ═══════════════════════════════════════════════════════ */
+if(!document.getElementById('zm15-css')){
+  var st = document.createElement('style');
+  st.id = 'zm15-css';
+  st.textContent = `
+@keyframes zm15-spin{to{transform:rotate(360deg)}}
+@keyframes zm15-fade{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes zm15-bar{0%,100%{height:5px;opacity:.6}50%{height:22px;opacity:1}}
+@keyframes zm15-bar2{0%,100%{height:14px}50%{height:5px}}
+@keyframes zm15-bar3{0%,100%{height:8px}30%{height:20px}70%{height:6px}}
+@keyframes zm15-rainbow{0%{background-position:0% 50%}100%{background-position:300% 50%}}
+@keyframes zm15-pop{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:scale(1)}}
+
+/* ===== MINI ===== */
+#zm15-mini{position:fixed;top:84px;left:20px;z-index:9997;display:flex;align-items:center;gap:10px;
+  padding:8px 13px 8px 10px;border-radius:14px;
+  background:linear-gradient(135deg,rgba(13,21,39,.96),rgba(26,14,46,.94));
+  border:2px solid #22d3ee;box-shadow:0 0 20px rgba(34,211,238,.55),0 8px 24px rgba(0,0,0,.6);
+  font-family:system-ui,sans-serif;color:#fff;cursor:pointer;user-select:none;-webkit-user-select:none;
+  transition:transform .2s,box-shadow .3s,opacity .3s;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#zm15-mini:hover{transform:scale(1.04);box-shadow:0 0 30px rgba(34,211,238,1),0 8px 28px rgba(0,0,0,.7)}
+#zm15-mini.playing{border-color:#fbbf24;box-shadow:0 0 24px rgba(251,191,36,.8),0 8px 24px rgba(0,0,0,.6)}
+#zm15-mini .mi-ic{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:19px;line-height:1;background:rgba(34,211,238,.18);border:1.5px solid rgba(34,211,238,.55);transition:background .3s}
+#zm15-mini.playing .mi-ic{background:rgba(251,191,36,.18);border-color:rgba(251,191,36,.6)}
+#zm15-mini .mi-info{display:flex;flex-direction:column;gap:1px;min-width:0}
+#zm15-mini .mi-title{font-size:11.5px;font-weight:900;letter-spacing:.8px;color:#a5f3fc;white-space:nowrap}
+#zm15-mini.playing .mi-title{color:#fde68a}
+#zm15-mini .mi-sub{font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:.4px;white-space:nowrap}
+#zm15-mini .mi-bars{display:flex;align-items:flex-end;gap:2px;height:16px;margin-left:2px}
+#zm15-mini .mi-bars span{width:2.5px;background:#22d3ee;border-radius:2px;height:4px}
+#zm15-mini.playing .mi-bars span{background:#fbbf24;animation:zm15-bar .9s ease-in-out infinite}
+#zm15-mini .mi-bars span:nth-child(1){animation-delay:0s}
+#zm15-mini .mi-bars span:nth-child(2){animation-delay:.15s}
+#zm15-mini .mi-bars span:nth-child(3){animation-delay:.3s}
+#zm15-mini .mi-bars span:nth-child(4){animation-delay:.45s}
+
+/* ===== MODAL ===== */
+#zm15-modal{position:fixed;inset:0;z-index:2147483600;background:rgba(2,6,15,.96);
+  display:none;align-items:center;justify-content:center;padding:14px;overflow-y:auto;
+  font-family:system-ui,sans-serif;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  animation:zm15-fade .28s ease-out}
+#zm15-modal.open{display:flex}
+#zm15-card{width:100%;max-width:480px;margin:auto;padding:3px;border-radius:22px;
+  background:linear-gradient(90deg,#22d3ee,#a855f7,#f472b6,#fbbf24,#22d3ee);
+  background-size:300% 100%;animation:zm15-rainbow 6s linear infinite;
+  box-shadow:0 0 50px rgba(34,211,238,.5),0 20px 60px rgba(0,0,0,.85)}
+#zm15-inner{background:linear-gradient(160deg,#0d1527 0%,#0a0f1a 45%,#1a0e2e 100%);
+  border-radius:19px;padding:18px 18px 16px;color:#fff;max-height:94vh;overflow-y:auto}
+
+/* Header */
+#zm15-head{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding-bottom:12px;margin-bottom:14px;border-bottom:1.5px solid rgba(34,211,238,.28)}
+#zm15-head .brand{display:flex;align-items:center;gap:11px;min-width:0}
+#zm15-head .logo{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:22px;flex-shrink:0;background:linear-gradient(135deg,rgba(34,211,238,.25),rgba(168,85,247,.25));
+  border:2px solid rgba(34,211,238,.6);box-shadow:0 0 16px rgba(34,211,238,.55)}
+#zm15-head .title{color:#fff;font-weight:900;font-size:14px;letter-spacing:1.5px}
+#zm15-head .subtitle{color:#94a3b8;font-size:10px;font-weight:700;letter-spacing:.5px;margin-top:1px}
+#zm15-head .actions{display:flex;gap:7px;flex-shrink:0}
+.i15btn{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  background:rgba(34,211,238,.12);border:1.5px solid rgba(34,211,238,.5);color:#a5f3fc;font-size:15px;font-weight:900;
+  cursor:pointer;font-family:inherit;transition:transform .15s,background .2s,color .2s}
+.i15btn:hover{transform:scale(1.08);background:rgba(34,211,238,.25)}
+.i15btn.close{background:rgba(239,68,68,.18);border-color:rgba(239,68,68,.6);color:#fca5a5}
+.i15btn.close:hover{background:rgba(239,68,68,.35)}
+
+/* Visualizer */
+#zm15-viz{display:flex;align-items:flex-end;justify-content:center;gap:4px;height:36px;margin-bottom:12px}
+#zm15-viz span{width:4px;background:linear-gradient(180deg,#22d3ee,#a855f7);border-radius:3px;height:5px;opacity:.4;transition:opacity .3s}
+#zm15-modal.playing #zm15-viz span{opacity:1;animation:zm15-bar 1s ease-in-out infinite}
+#zm15-modal.playing #zm15-viz span:nth-child(3n){animation:zm15-bar2 .8s ease-in-out infinite}
+#zm15-modal.playing #zm15-viz span:nth-child(3n+1){animation:zm15-bar3 1.2s ease-in-out infinite}
+#zm15-viz span:nth-child(1){animation-delay:0s}
+#zm15-viz span:nth-child(2){animation-delay:.1s}
+#zm15-viz span:nth-child(3){animation-delay:.2s}
+#zm15-viz span:nth-child(4){animation-delay:.3s}
+#zm15-viz span:nth-child(5){animation-delay:.15s}
+#zm15-viz span:nth-child(6){animation-delay:.25s}
+#zm15-viz span:nth-child(7){animation-delay:.35s}
+#zm15-viz span:nth-child(8){animation-delay:.05s}
+#zm15-viz span:nth-child(9){animation-delay:.45s}
+#zm15-viz span:nth-child(10){animation-delay:.2s}
+
+/* Now Playing */
+#zm15-np{text-align:center;margin-bottom:12px}
+#zm15-np-title{color:#fff;font-weight:900;font-size:19px;letter-spacing:.5px;
+  text-shadow:0 0 12px rgba(34,211,238,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#zm15-np-sub{color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:.5px;margin-top:3px}
+
+/* Progress */
+#zm15-progress{margin-bottom:14px}
+#zm15-bar{position:relative;height:8px;border-radius:99px;overflow:hidden;background:rgba(15,23,42,.7);
+  border:1px solid rgba(34,211,238,.22);box-shadow:inset 0 1px 4px rgba(0,0,0,.5);cursor:pointer}
+#zm15-fill{height:100%;width:0%;background:linear-gradient(90deg,#22d3ee,#a855f7);border-radius:99px;
+  box-shadow:0 0 14px rgba(34,211,238,.85);transition:width .35s linear}
+#zm15-time{display:flex;justify-content:space-between;margin-top:6px;
+  font-family:ui-monospace,monospace;font-size:11px;font-weight:900;color:#94a3b8}
+#zm15-cur{color:#22d3ee;text-shadow:0 0 8px rgba(34,211,238,.7)}
+#zm15-dur{color:#64748b}
+
+/* ★ SEEK BUTTONS — MỚI ★ */
+#zm15-seek{margin-bottom:14px;padding:10px;border-radius:12px;
+  background:linear-gradient(135deg,rgba(251,191,36,.08),rgba(34,211,238,.05));
+  border:1.5px solid rgba(251,191,36,.3)}
+#zm15-seek .lbl{color:#fbbf24;font-weight:900;font-size:10px;letter-spacing:1.5px;
+  margin-bottom:8px;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
+#zm15-seek .lbl::before,#zm15-seek .lbl::after{content:'';flex:1;height:1px;background:rgba(251,191,36,.3);max-width:60px}
+#zm15-seek .row{display:grid;grid-template-columns:repeat(6,1fr);gap:5px}
+.zm15-seekbtn{padding:9px 4px;border-radius:9px;font-family:inherit;font-weight:900;font-size:11px;
+  cursor:pointer;letter-spacing:.3px;text-align:center;
+  background:linear-gradient(135deg,rgba(34,211,238,.14),rgba(168,85,247,.1));
+  border:1.5px solid rgba(34,211,238,.5);color:#a5f3fc;
+  transition:transform .12s,background .2s,box-shadow .2s;
+  -webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.zm15-seekbtn:hover{transform:scale(1.08);background:linear-gradient(135deg,rgba(34,211,238,.3),rgba(168,85,247,.2));
+  box-shadow:0 0 12px rgba(34,211,238,.65)}
+.zm15-seekbtn:active{transform:scale(.94);background:linear-gradient(135deg,#22d3ee,#a855f7);color:#fff}
+
+/* Controls */
+#zm15-controls{display:flex;justify-content:center;align-items:center;gap:14px;margin-bottom:14px}
+.c15btn{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;
+  background:rgba(34,211,238,.12);border:2px solid rgba(34,211,238,.5);color:#a5f3fc;font-size:19px;
+  cursor:pointer;font-family:inherit;transition:transform .15s,background .2s,box-shadow .2s}
+.c15btn:hover{transform:scale(1.08);background:rgba(34,211,238,.25);box-shadow:0 0 16px rgba(34,211,238,.7)}
+.c15btn:active{transform:scale(.94)}
+.c15btn.main{width:60px;height:60px;font-size:26px;background:linear-gradient(135deg,#22c55e,#15803d);
+  border-color:#86efac;color:#fff;box-shadow:0 0 22px rgba(34,197,94,.75)}
+.c15btn.main:hover{box-shadow:0 0 32px rgba(34,197,94,1)}
+.c15btn.main.paused{background:linear-gradient(135deg,#f59e0b,#b45309);border-color:#fde68a;
+  box-shadow:0 0 22px rgba(245,158,11,.75)}
+.c15btn.auto{width:42px;height:42px;font-size:17px}
+.c15btn.auto.on{background:linear-gradient(135deg,rgba(168,85,247,.35),rgba(124,58,237,.25));
+  border-color:#c4b5fd;color:#fff;box-shadow:0 0 16px rgba(168,85,247,.75)}
+
+/* Iframe wrapper */
+#zm15-iframe-wrap{width:1px;height:1px;overflow:hidden;position:absolute;opacity:.01;
+  pointer-events:none;bottom:0;left:0}
+
+/* Footer */
+#zm15-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:12px;
+  border-top:1.5px solid rgba(34,211,238,.22);flex-wrap:wrap}
+.vol15{display:flex;align-items:center;gap:5px;padding:4px 6px;border-radius:12px;
+  background:rgba(10,15,29,.6);border:1.5px solid rgba(34,211,238,.28)}
+.v15btn{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(168,85,247,.1));
+  border:1.5px solid rgba(34,211,238,.5);color:#a5f3fc;font-size:16px;font-weight:900;
+  cursor:pointer;font-family:inherit;padding:0;transition:transform .15s,background .2s,box-shadow .2s}
+.v15btn:hover{transform:scale(1.1);background:linear-gradient(135deg,rgba(34,211,238,.32),rgba(168,85,247,.2));
+  box-shadow:0 0 14px rgba(34,211,238,.75)}
+.v15btn:active{transform:scale(.92)}
+.v15btn.mute{background:linear-gradient(135deg,rgba(239,68,68,.2),rgba(185,28,28,.15));
+  border-color:rgba(239,68,68,.55);color:#fca5a5}
+.v15btn.on{background:linear-gradient(135deg,rgba(34,197,94,.25),rgba(22,163,74,.15));
+  border-color:rgba(34,197,94,.6);color:#86efac}
+#zm15-vval{color:#22d3ee;font-weight:900;font-size:13px;min-width:46px;text-align:center;
+  font-family:ui-monospace,monospace;text-shadow:0 0 10px rgba(34,211,238,.85);user-select:none}
+.b15btn{padding:9px 14px;border-radius:11px;font-family:inherit;font-weight:900;font-size:11px;
+  letter-spacing:.5px;cursor:pointer;border:2px solid;white-space:nowrap;
+  transition:transform .15s,box-shadow .2s}
+.b15btn.on{background:linear-gradient(135deg,#22c55e,#15803d);border-color:#86efac;color:#fff;
+  box-shadow:0 0 14px rgba(34,197,94,.7)}
+.b15btn.off{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.55);color:#fca5a5}
+.b15btn:hover{transform:scale(1.05)}
+
+/* Playlist */
+#zm15-list{margin-top:14px;padding-top:12px;border-top:1.5px solid rgba(34,211,238,.22)}
+#zm15-list .list-title{color:#22d3ee;font-weight:900;font-size:10px;letter-spacing:1.5px;
+  margin-bottom:8px;display:flex;align-items:center;gap:6px}
+#zm15-list .list-title::before{content:'';width:3px;height:12px;background:#22d3ee;border-radius:2px;
+  box-shadow:0 0 8px #22d3ee}
+.s15row{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:11px;margin-bottom:6px;
+  background:rgba(15,23,42,.55);border:1.5px solid rgba(71,85,105,.35);cursor:pointer;transition:all .18s}
+.s15row:hover{background:rgba(34,211,238,.08);border-color:rgba(34,211,238,.5);transform:translateX(3px)}
+.s15row.active{background:linear-gradient(90deg,rgba(34,211,238,.22),rgba(34,211,238,.05));
+  border-color:rgba(34,211,238,.65);box-shadow:0 0 18px rgba(34,211,238,.35)}
+.s15row .si{width:38px;height:38px;border-radius:10px;flex-shrink:0;display:flex;align-items:center;
+  justify-content:center;font-size:18px;background:rgba(34,211,238,.14);border:1.5px solid rgba(34,211,238,.4)}
+.s15row.active .si{background:rgba(34,211,238,.3);box-shadow:0 0 12px rgba(34,211,238,.7)}
+.s15row .sm{flex:1;min-width:0}
+.s15row .sn{color:#e2e8f0;font-weight:900;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s15row.active .sn{color:#a5f3fc;text-shadow:0 0 8px rgba(34,211,238,.7)}
+.s15row .ss{color:#64748b;font-size:10px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s15row .sb{font-size:9px;font-weight:900;letter-spacing:.6px;padding:3px 8px;border-radius:6px;
+  background:rgba(251,191,36,.2);color:#fbbf24;border:1px solid rgba(251,191,36,.5);white-space:nowrap;
+  animation:zm15-pop .4s ease-out}
+.s15row .sd{color:#64748b;font-size:10px;font-family:ui-monospace,monospace;font-weight:700;padding:0 4px;white-space:nowrap}
+.s15row.active .sd{color:#22d3ee}
+
+/* Toast khi tua */
+#zm15-toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.7);
+  z-index:2147483700;padding:14px 26px;border-radius:14px;
+  background:linear-gradient(135deg,rgba(10,15,29,.96),rgba(26,14,46,.94));
+  border:2px solid #22d3ee;color:#a5f3fc;font-family:system-ui;font-weight:900;font-size:16px;
+  letter-spacing:1px;box-shadow:0 0 30px rgba(34,211,238,.8);pointer-events:none;
+  opacity:0;transition:opacity .25s,transform .25s}
+#zm15-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+
+/* Mobile */
+@media (max-width:600px){
+  #zm15-mini{top:70px;left:12px;padding:7px 10px 7px 8px}
+  #zm15-mini .mi-ic{width:32px;height:32px;font-size:16px}
+  #zm15-mini .mi-title{font-size:10.5px}
+  #zm15-mini .mi-sub{font-size:8.5px}
+  #zm15-inner{padding:16px 14px 14px}
+  #zm15-np-title{font-size:16px}
+  .c15btn{width:44px;height:44px;font-size:17px}
+  .c15btn.main{width:54px;height:54px;font-size:22px}
+  .c15btn.auto{width:38px;height:38px;font-size:15px}
+  #zm15-head .logo{width:38px;height:38px;font-size:19px}
+  #zm15-head .title{font-size:12px}
+  .v15btn{width:32px;height:32px;font-size:14px}
+  #zm15-vval{font-size:12px;min-width:42px}
+  .b15btn{font-size:10px;padding:8px 12px}
+  .zm15-seekbtn{font-size:10px;padding:8px 2px}
+  #zm15-seek .row{gap:4px}
+}
+`;
+  document.head.appendChild(st);
+}
+
+/* ═══════════════════════════════════════════════════════
+   🔊 IFRAME + VOLUME
+   ═══════════════════════════════════════════════════════ */
+function createIframe(song){
+  var wrap = document.getElementById('zm15-iframe-wrap');
+  if(!wrap){
+    /* Tạo wrapper nếu chưa có */
+    var inner = document.getElementById('zm15-inner');
+    if(!inner) return null;
+    wrap = document.createElement('div');
+    wrap.id = 'zm15-iframe-wrap';
+    inner.appendChild(wrap);
+  }
+  var old = document.getElementById('zm15-iframe');
+  if(old && old.parentNode){
+    try{ old.src='about:blank'; }catch(e){}
+    old.parentNode.removeChild(old);
+  }
+  var iframe = document.createElement('iframe');
+  iframe.id = 'zm15-iframe';
+  iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+  iframe.allowFullscreen = true;
+  iframe.style.cssText = 'width:400px;height:300px;border:none;';
+  iframe.dataset.songId = song.id;
+  iframe.src = song.url;
+  wrap.appendChild(iframe);
+  setTimeout(applyVolume, 800);
+  setTimeout(applyVolume, 2000);
+  setTimeout(applyVolume, 3500);
+  return iframe;
+}
+
+function destroyIframe(){
+  var iframe = document.getElementById('zm15-iframe');
+  if(iframe && iframe.parentNode){
+    try{ iframe.src='about:blank'; }catch(e){}
+    iframe.parentNode.removeChild(iframe);
+    return true;
+  }
+  return false;
+}
+
+function applyVolume(){
+  var iframe = document.getElementById('zm15-iframe');
+  if(!iframe) return;
+  var v = state.muted ? 0 : state.volume;
+  var msgs = [
+    { event:'command', func:'setVolume', args:[v] },
+    { type:'setVolume', value:v/100 },
+    { type:'setVolume', volume:v/100 },
+    { volume:v/100 }
+  ];
+  msgs.forEach(function(m){
+    try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+    try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+  });
+  try{
+    var doc = iframe.contentDocument || iframe.contentWindow.document;
+    if(doc) doc.querySelectorAll('audio, video').forEach(function(a){
+      try{ a.volume = Math.min(1, v/100); a.muted = state.muted; }catch(e){}
+    });
+  }catch(e){}
+}
+
+function setVolume(v){
+  v = Math.max(0, Math.min(100, v));
+  state.volume = v;
+  state.muted = (v === 0);
+  saveAll();
+  if(state.playing){
+    if(v === 0){ destroyIframe(); }
+    else{
+      var iframe = document.getElementById('zm15-iframe');
+      if(!iframe){
+        createIframe(getSong(state.currentId));
+        if(state.startTime) state.startTime = Date.now() - state.elapsed * 1000;
+      } else applyVolume();
+    }
+  }
+  updateVolumeUI();
+}
+function toggleMute(){
+  if(state.muted) setVolume(state.volume || 100);
+  else{ state._lastVol = state.volume; setVolume(0); }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ⏱️ TIMER + PROGRESS
+   ═══════════════════════════════════════════════════════ */
+function getElapsed(){
+  if(state.playing && state.startTime) return (Date.now() - state.startTime) / 1000;
+  return state.elapsed;
+}
+
+function startTimer(){ if(!state.timerId) state.timerId = setInterval(tick, 250); }
+function stopTimer(){ if(state.timerId){ clearInterval(state.timerId); state.timerId = null; } }
+
+function tick(){
+  updateProgressUI();
+  var el = getElapsed();
+  var song = getSong(state.currentId);
+  /* Mini sub cập nhật */
+  var ms = document.getElementById('zm15-mi-sub');
+  if(ms && state.playing) ms.textContent = fmt(el) + ' / ' + fmt(song.duration) + ' · đang phát';
+  if(el >= song.duration){
+    if(state.autoNext){
+      console.log('%c[Music v15] ⏭️ Hết bài → tự chuyển','color:#22d3ee;font-weight:900');
+      nextSong(true);
+    } else {
+      destroyIframe();
+      state.playing = false;
+      state.elapsed = song.duration;
+      state.startTime = 0;
+      stopTimer();
+      updateAll();
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ★ SEEK — TUA NHẠC ★
+   ═══════════════════════════════════════════════════════ */
+function showSeekToast(text){
+  var t = document.getElementById('zm15-toast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'zm15-toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = text;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(function(){ t.classList.remove('show'); }, 900);
+}
+
+function seekTo(seconds){
+  var song = getSong(state.currentId);
+  seconds = Math.max(0, Math.min(song.duration - 1, seconds));
+
+  /* Cập nhật timer local */
+  state.elapsed = seconds;
+  if(state.playing) state.startTime = Date.now() - state.elapsed * 1000;
+
+  /* Gửi postMessage tới iframe (nếu player hỗ trợ seek) */
+  var iframe = document.getElementById('zm15-iframe');
+  if(iframe){
+    var msgs = [
+      { event:'command', func:'seekTo', args:[seconds, true] },
+      { type:'seek', value:seconds },
+      { action:'seek', time:seconds },
+      { command:'seekTo', value:seconds },
+      { seek: seconds }
+    ];
+    msgs.forEach(function(m){
+      try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+      try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+    });
+  }
+  updateProgressUI();
+
+  /* Toast thông báo */
+  var label = seconds < 60 ? Math.floor(seconds) + 's' : fmt(seconds);
+  showSeekToast('⏩ Tua đến ' + label);
+
+  if(window.__znpToast){
+    window.__znpToast('⏩ Đã tua đến ' + label, '#22d3ee', 1200);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   ▶️ PLAY / PAUSE / NEXT / PREV
+   ═══════════════════════════════════════════════════════ */
+function playById(id){
+  var song = getSong(id);
+  if(!song) return;
+  if(id === state.currentId && state.playing){ pauseAudio(); return; }
+
+  var wasSame = (id === state.currentId);
+  state.currentId = id;
+  state.muted = false;
+
+  createIframe(song);
+  state.playing = true;
+
+  if(!wasSame){
+    state.startTime = Date.now();
+    state.elapsed = 0;
+  } else {
+    state.startTime = Date.now() - state.elapsed * 1000;
+  }
+
+  saveAll();
+  startTimer();
+  updateAll();
+  injectList();
+}
+
+function pauseAudio(){
+  destroyIframe();
+  if(state.playing && state.startTime) state.elapsed = (Date.now() - state.startTime) / 1000;
+  state.playing = false;
+  state.startTime = 0;
+  stopTimer();
+  updateAll();
+}
+
+function toggleAudio(){
+  if(state.playing) pauseAudio();
+  else{
+    var song = getSong(state.currentId);
+    if(state.elapsed >= song.duration) state.elapsed = 0;
+    playById(state.currentId);
+  }
+}
+
+function nextSong(auto){
+  var i = idxOf(state.currentId);
+  var nxt = SONGS[(i + 1) % SONGS.length];
+  state.elapsed = 0;
+  state.startTime = 0;
+  var wasPlaying = state.playing || auto;
+  state.currentId = nxt.id;
+  if(wasPlaying){
+    state.playing = true;
+    createIframe(nxt);
+    state.startTime = Date.now();
+    startTimer();
+  }
+  saveAll();
+  updateAll();
+  injectList();
+}
+
+function prevSong(){
+  var i = idxOf(state.currentId);
+  var prv = SONGS[(i - 1 + SONGS.length) % SONGS.length];
+  state.elapsed = 0;
+  state.startTime = 0;
+  var wasPlaying = state.playing;
+  state.currentId = prv.id;
+  if(wasPlaying){
+    state.playing = true;
+    createIframe(prv);
+    state.startTime = Date.now();
+    startTimer();
+  }
+  saveAll();
+  updateAll();
+  injectList();
+}
+
+/* ═══════════════════════════════════════════════════════
+   📊 UPDATE UI
+   ═══════════════════════════════════════════════════════ */
+function updateProgressUI(){
+  var song = getSong(state.currentId);
+  var el = Math.min(getElapsed(), song.duration);
+  var pct = song.duration ? (el / song.duration) * 100 : 0;
+  var fill = document.getElementById('zm15-fill');
+  var cur = document.getElementById('zm15-cur');
+  var dur = document.getElementById('zm15-dur');
+  if(fill) fill.style.width = pct + '%';
+  if(cur) cur.textContent = fmt(el);
+  if(dur) dur.textContent = fmt(song.duration);
+}
+
+function updateVolumeUI(){
+  var valEl = document.getElementById('zm15-vval');
+  var muteBtn = document.getElementById('zm15-vmute');
+  if(valEl){
+    valEl.textContent = (state.muted ? '🔇 ' : '') + state.volume + '%';
+    valEl.style.color = state.muted ? '#fca5a5' : (state.volume < 30 ? '#fbbf24' : '#22d3ee');
+  }
+  if(muteBtn){
+    if(state.muted || state.volume === 0){ muteBtn.textContent='🔇'; muteBtn.className='v15btn mute'; }
+    else if(state.volume < 50){ muteBtn.textContent='🔉'; muteBtn.className='v15btn'; }
+    else { muteBtn.textContent='🔊'; muteBtn.className='v15btn on'; }
+  }
+}
+
+function updateAutoUI(){
+  var a = document.getElementById('zm15-auto');
+  if(!a) return;
+  if(state.autoNext) a.classList.add('on'); else a.classList.remove('on');
+}
+
+function updateBattleUI(){
+  var b = document.getElementById('zm15-battle');
+  if(!b) return;
+  if(state.inBattle){ b.textContent = '🎮 TRONG TRẬN: BẬT'; b.className = 'b15btn on'; }
+  else { b.textContent = '🎮 TRONG TRẬN: TẮT'; b.className = 'b15btn off'; }
+}
+
+function updateAll(){
+  var song = getSong(state.currentId);
+
+  var modal = document.getElementById('zm15-modal');
+  if(modal) modal.classList.toggle('playing', state.playing);
+
+  var t = document.getElementById('zm15-np-title');
+  var s = document.getElementById('zm15-np-sub');
+  if(t) t.textContent = song.title;
+  if(s) s.textContent = song.sub + ' · ' + fmt(song.duration);
+
+  var playBtn = document.getElementById('zm15-play');
+  if(playBtn){
+    if(state.playing){ playBtn.classList.remove('paused'); playBtn.textContent = '⏸'; }
+    else { playBtn.classList.add('paused'); playBtn.textContent = '▶'; }
+  }
+
+  var mini = document.getElementById('zm15-mini');
+  if(mini){
+    mini.classList.toggle('playing', state.playing);
+    var mi = document.getElementById('zm15-mi-ic');
+    var mt = document.getElementById('zm15-mi-title');
+    var ms = document.getElementById('zm15-mi-sub');
+    if(state.playing){
+      if(mi) mi.textContent = '🎶';
+      if(mt) mt.textContent = song.title.toUpperCase();
+      if(ms) ms.textContent = fmt(getElapsed()) + ' / ' + fmt(song.duration);
+    } else {
+      if(mi) mi.textContent = song.icon;
+      if(mt) mt.textContent = 'NHẠC';
+      if(ms) ms.textContent = 'Bấm để mở';
+    }
+  }
+
+  updateProgressUI();
+  updateVolumeUI();
+  updateAutoUI();
+  updateBattleUI();
+}
+
+/* ═══════════════════════════════════════════════════════
+   📜 PLAYLIST
+   ═══════════════════════════════════════════════════════ */
+function injectList(){
+  var list = document.getElementById('zm15-list');
+  if(!list) return;
+  var html = '<div class="list-title">📀 DANH SÁCH PHÁT</div>';
+  SONGS.forEach(function(s){
+    var active = (s.id === state.currentId);
+    html +=
+      '<div class="s15row' + (active ? ' active' : '') + '" data-sid="' + s.id + '">' +
+        '<div class="si">' + s.icon + '</div>' +
+        '<div class="sm">' +
+          '<div class="sn">' + esc(s.title) + '</div>' +
+          '<div class="ss">' + esc(s.sub) + '</div>' +
+        '</div>' +
+        (active && state.playing
+          ? '<div class="sb">▶ ĐANG PHÁT</div>'
+          : '<div class="sd">' + fmt(s.duration) + '</div>'
+        ) +
+      '</div>';
+  });
+  list.innerHTML = html;
+  list.querySelectorAll('.s15row').forEach(function(el){
+    el.onclick = function(e){
+      e.stopPropagation();
+      playById(el.getAttribute('data-sid'));
+    };
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   🖼️ BUILD MINI
+   ═══════════════════════════════════════════════════════ */
+function buildMini(){
+  if(document.getElementById('zm15-mini')) return;
+  var m = document.createElement('div');
+  m.id = 'zm15-mini';
+  m.innerHTML =
+    '<div class="mi-ic" id="zm15-mi-ic">🎵</div>' +
+    '<div class="mi-info">' +
+      '<div class="mi-title" id="zm15-mi-title">NHẠC</div>' +
+      '<div class="mi-sub" id="zm15-mi-sub">Bấm để mở</div>' +
+    '</div>' +
+    '<div class="mi-bars"><span></span><span></span><span></span><span></span></div>';
+  m.onclick = function(){
+    openModal();
+    if(!state.playing) playById(state.currentId);
+  };
+  document.body.appendChild(m);
+  updateAll();
+}
+
+/* ═══════════════════════════════════════════════════════
+   🖼️ BUILD MODAL
+   ═══════════════════════════════════════════════════════ */
+function buildModal(){
+  if(document.getElementById('zm15-modal')) return;
+  var m = document.createElement('div');
+  m.id = 'zm15-modal';
+
+  var vizBars = '';
+  for(var i=0;i<10;i++) vizBars += '<span></span>';
+
+  m.innerHTML =
+    '<div id="zm15-card">' +
+      '<div id="zm15-inner">' +
+
+        /* Header */
+        '<div id="zm15-head">' +
+          '<div class="brand">' +
+            '<div class="logo">🎧</div>' +
+            '<div>' +
+              '<div class="title">MUSIC PLAYER</div>' +
+              '<div class="subtitle">Zombie Protocol · v15</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="actions">' +
+            '<button class="i15btn" id="zm15-reload" title="Tải lại">↻</button>' +
+            '<button class="i15btn" id="zm15-external" title="Mở tab mới">↗</button>' +
+            '<button class="i15btn close" id="zm15-close" title="Đóng (Esc)">✕</button>' +
+          '</div>' +
+        '</div>' +
+
+        /* Visualizer */
+        '<div id="zm15-viz">' + vizBars + '</div>' +
+
+        /* Now Playing */
+        '<div id="zm15-np">' +
+          '<div id="zm15-np-title">Tổng hợp 7 nhạc hot</div>' +
+          '<div id="zm15-np-sub">Playlist · EdgeOne · 30:00</div>' +
+        '</div>' +
+
+        /* Progress */
+        '<div id="zm15-progress">' +
+          '<div id="zm15-bar"><div id="zm15-fill"></div></div>' +
+          '<div id="zm15-time">' +
+            '<span id="zm15-cur">0:00</span>' +
+            '<span id="zm15-dur">30:00</span>' +
+          '</div>' +
+        '</div>' +
+
+        /* ★ SEEK BUTTONS ROW ★ */
+        '<div id="zm15-seek">' +
+          '<div class="lbl">⏩ TUA NHẠC NHANH</div>' +
+          '<div class="row">' +
+            '<button class="zm15-seekbtn" data-seek="5">5s</button>' +
+            '<button class="zm15-seekbtn" data-seek="15">15s</button>' +
+            '<button class="zm15-seekbtn" data-seek="30">30s</button>' +
+            '<button class="zm15-seekbtn" data-seek="60">1 phút</button>' +
+            '<button class="zm15-seekbtn" data-seek="120">2 phút</button>' +
+            '<button class="zm15-seekbtn" data-seek="180">3 phút</button>' +
+          '</div>' +
+        '</div>' +
+
+        /* Controls */
+        '<div id="zm15-controls">' +
+          '<button class="c15btn" id="zm15-prev" title="Bài trước">⏮</button>' +
+          '<button class="c15btn main paused" id="zm15-play" title="Phát / Tạm dừng">▶</button>' +
+          '<button class="c15btn" id="zm15-next" title="Bài sau">⏭</button>' +
+          '<button class="c15btn auto on" id="zm15-auto" title="Tự động chuyển bài">🔁</button>' +
+        '</div>' +
+
+        /* Iframe wrapper */
+        '<div id="zm15-iframe-wrap"></div>' +
+
+        /* Footer */
+        '<div id="zm15-foot">' +
+          '<div class="vol15">' +
+            '<button class="v15btn" id="zm15-vdown">−</button>' +
+            '<button class="v15btn on" id="zm15-vmute">🔊</button>' +
+            '<span id="zm15-vval">100%</span>' +
+            '<button class="v15btn" id="zm15-vup">+</button>' +
+          '</div>' +
+          '<button class="b15btn off" id="zm15-battle">🎮 TRONG TRẬN: TẮT</button>' +
+        '</div>' +
+
+        /* Playlist */
+        '<div id="zm15-list"></div>' +
+
+      '</div>' +
+    '</div>';
+
+  document.body.appendChild(m);
+
+  /* Bind controls */
+  m.querySelector('#zm15-close').onclick = closeModal;
+  m.querySelector('#zm15-reload').onclick = function(e){
+    e.stopPropagation();
+    if(state.playing){
+      var song = getSong(state.currentId);
+      createIframe(song);
+      state.startTime = Date.now() - state.elapsed * 1000;
+      if(window.__znpToast) window.__znpToast('↻ Đã tải lại','#22d3ee',1400);
+    }
+  };
+  m.querySelector('#zm15-external').onclick = function(e){
+    e.stopPropagation();
+    window.open(getSong(state.currentId).url, '_blank', 'noopener,noreferrer');
+  };
+  m.querySelector('#zm15-play').onclick = function(e){ e.stopPropagation(); toggleAudio(); };
+  m.querySelector('#zm15-prev').onclick = function(e){ e.stopPropagation(); prevSong(); };
+  m.querySelector('#zm15-next').onclick = function(e){ e.stopPropagation(); nextSong(false); };
+  m.querySelector('#zm15-auto').onclick = function(e){
+    e.stopPropagation();
+    state.autoNext = !state.autoNext;
+    saveAll(); updateAutoUI();
+    if(window.__znpToast){
+      window.__znpToast(state.autoNext ? '🔁 Tự chuyển bài: BẬT' : '⏹️ Tự chuyển bài: TẮT',
+        state.autoNext ? '#22c55e' : '#94a3b8', 1800);
+    }
+  };
+
+  /* ★ SEEK BUTTONS ★ */
+  m.querySelectorAll('.zm15-seekbtn').forEach(function(b){
+    b.onclick = function(e){
+      e.stopPropagation();
+      var sec = parseInt(b.getAttribute('data-seek')) || 0;
+      seekTo(sec);
+    };
+  });
+
+  /* Volume */
+  m.querySelector('#zm15-vdown').onclick = function(e){ e.stopPropagation(); setVolume(Math.max(0, state.volume - 10)); };
+  m.querySelector('#zm15-vup').onclick = function(e){ e.stopPropagation(); setVolume(Math.min(100, state.volume + 10)); };
+  m.querySelector('#zm15-vmute').onclick = function(e){ e.stopPropagation(); toggleMute(); };
+
+  /* Battle toggle */
+  m.querySelector('#zm15-battle').onclick = function(e){
+    e.stopPropagation();
+    state.inBattle = !state.inBattle;
+    saveAll(); updateBattleUI();
+    if(window.__znpToast){
+      window.__znpToast(state.inBattle ? '🎮 Nhạc phát cả khi vào trận' : '🎮 Nhạc tắt khi vào trận',
+        state.inBattle ? '#22c55e' : '#f87171', 2000);
+    }
+  };
+
+  /* Click bar để tua thủ công */
+  m.querySelector('#zm15-bar').onclick = function(e){
+    e.stopPropagation();
+    var rect = this.getBoundingClientRect();
+    var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    var song = getSong(state.currentId);
+    seekTo(song.duration * pct);
+  };
+
+  /* Click ngoài để đóng */
+  m.onclick = function(e){ if(e.target === m) closeModal(); };
+
+  /* ESC */
+  function esc(e){
+    if(e.key === 'Escape'){
+      document.removeEventListener('keydown', esc, true);
+      closeModal();
+    }
+  }
+  document.addEventListener('keydown', esc, true);
+}
+
+/* ═══════════════════════════════════════════════════════
+   🔓 OPEN / CLOSE
+   ═══════════════════════════════════════════════════════ */
+function openModal(){
+  buildModal();
+  injectList();
+  var m = document.getElementById('zm15-modal');
+  if(!m) return;
+  m.classList.add('open');
+  updateAll();
+}
+function closeModal(){
+  var m = document.getElementById('zm15-modal');
+  if(!m) return;
+  m.classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════════════════
+   🎮 XỬ LÝ VÀO TRẬN / RA MENU
+   ═══════════════════════════════════════════════════════ */
+var _lastP = null;
+setInterval(function(){
+  var p = isPlayingGame();
+  if(p === _lastP) return;
+  var wasP = _lastP;
+  _lastP = p;
+
+  var mini = document.getElementById('zm15-mini');
+
+  if(p && !wasP){
+    if(!state.inBattle){
+      destroyIframe();
+      if(state.playing && state.startTime) state.elapsed = (Date.now() - state.startTime) / 1000;
+      state.playing = false;
+      state.startTime = 0;
+      stopTimer();
+      console.log('%c[Music v15] 🎮 Vào trận → TẮT nhạc','color:#f87171;font-weight:900');
+    } else {
+      console.log('%c[Music v15] 🎮 Vào trận → GIỮ nhạc','color:#22c55e;font-weight:900');
+    }
+    if(mini){
+      mini.style.opacity = '0';
+      mini.style.pointerEvents = 'none';
+      mini.style.transform = 'translateX(-220px)';
+    }
+    closeModal();
+    updateAll();
+  } else if(!p && wasP){
+    if(mini){
+      mini.style.opacity = '1';
+      mini.style.pointerEvents = 'auto';
+      mini.style.transform = '';
+    }
+    updateAll();
+    console.log('%c[Music v15] 🏠 Ra menu','color:#22d3ee;font-weight:900');
+  }
+}, 400);
+
+/* ═══════════════════════════════════════════════════════
+   🔧 TỰ KHÔI PHỤC IFRAME KHI BỊ XÓA
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  if(state.playing && state.inBattle && isPlayingGame()){
+    var iframe = document.getElementById('zm15-iframe');
+    if(!iframe){
+      createIframe(getSong(state.currentId));
+      if(state.startTime) state.startTime = Date.now() - state.elapsed * 1000;
+    }
+  }
+}, 2000);
+
+/* ═══════════════════════════════════════════════════════
+   🚀 BOOT
+   ═══════════════════════════════════════════════════════ */
+function ready(cb){
+  var r = document.getElementById('root');
+  if(r && r.children.length > 0) return cb();
+  setTimeout(function(){ ready(cb); }, 300);
+}
+ready(function(){
+  setTimeout(function(){
+    buildMini();
+    buildModal();
+    injectList();
+    updateAll();
+    console.log('%c[Music v15] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+    console.log('%c   🔥 Bài mới: "Tổng hợp 7 nhạc hot" (đầu danh sách)','color:#fbbf24;font-size:11px');
+    console.log('%c   ⏩ Đã thêm nút tua: 5s · 15s · 30s · 1p · 2p · 3p','color:#22d3ee;font-size:11px');
+  }, 1500);
+});
+
+/* ═══════════════════════════════════════════════════════
+   🌐 API TOÀN CỤC
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_MUSIC = {
+  open: openModal,
+  close: closeModal,
+  play: function(){ playById(state.currentId); },
+  pause: pauseAudio,
+  toggle: toggleAudio,
+  next: nextSong,
+  prev: prevSong,
+  playById: playById,
+  seekTo: seekTo,                    /* ← API tua nhạc */
+  setVolume: setVolume,
+  toggleMute: toggleMute,
+  setAutoNext: function(v){ state.autoNext = !!v; saveAll(); updateAutoUI(); },
+  setInBattle: function(v){ state.inBattle = !!v; saveAll(); updateBattleUI(); },
+  list: function(){ return SONGS.slice(); },
+  state: function(){
+    return {
+      currentId: state.currentId,
+      playing: state.playing,
+      muted: state.muted,
+      volume: state.volume,
+      inBattle: state.inBattle,
+      autoNext: state.autoNext,
+      elapsed: getElapsed(),
+      duration: getSong(state.currentId).duration
+    };
+  }
+};
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 PATCH v15.1 — TUA CỘNG DỒN + NHẠC NHẢY THEO THỜI GIAN
+   - Nút tua trở thành CỘNG DỒN: +5s, +15s, +30s, +1p, +2p, +3p
+   - Reload iframe với fragment #t=X để player thực sự seek
+   - Gửi nhiều định dạng postMessage cho player hỗ trợ API
+   - Đồng bộ volume sau khi reload
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_V151) return;
+window.__ZNP_V151 = true;
+
+console.log('%c[v15.1] ⏩ Đang patch tua cộng dồn...',
+  'color:#fbbf24;font-weight:900;font-size:14px');
+
+/* ═══════════════════════════════════════════════════════
+   CHỜ v15 SẴN SÀNG
+   ═══════════════════════════════════════════════════════ */
+var tries = 0;
+var waitTimer = setInterval(function(){
+  tries++;
+  if(window.__ZNP_MUSIC && window.__ZNP_MUSIC.seekTo && window.__ZNP_MUSIC.state){
+    clearInterval(waitTimer);
+    doPatch();
+  }
+  if(tries > 60) clearInterval(waitTimer);
+}, 250);
+
+function doPatch(){
+  /* ═══════════════════════════════════════════════════════
+     OVERRIDE seekTo — cập nhật timer + RELOAD IFRAME
+     ═══════════════════════════════════════════════════════ */
+  var origSeek = window.__ZNP_MUSIC.seekTo;
+
+  window.__ZNP_MUSIC.seekTo = function(seconds){
+    /* 1. Gọi hàm gốc để cập nhật timer nội bộ + postMessage */
+    try{ origSeek.call(window.__ZNP_MUSIC, seconds); }catch(e){}
+
+    /* 2. Reload iframe tại đúng giây đó */
+    reloadIframeAtTime(seconds);
+
+    /* 3. Toast hiển thị giây hiện tại */
+    var label = formatTimeLabel(seconds);
+    showBigToast('⏩ Đã tua đến ' + label);
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     RELOAD IFRAME VỚI FRAGMENT #t=X
+     ═══════════════════════════════════════════════════════ */
+  function reloadIframeAtTime(seconds){
+    var iframe = document.getElementById('zm15-iframe');
+    if(!iframe) return;
+
+    var st = window.__ZNP_MUSIC.state();
+    var list = window.__ZNP_MUSIC.list();
+    var song = null;
+    for(var i = 0; i < list.length; i++){
+      if(list[i].id === st.currentId){ song = list[i]; break; }
+    }
+    if(!song) return;
+
+    /* Xoá fragment / query cũ nếu có */
+    var baseUrl = String(song.url).split('#')[0];
+    /* Xoá các param cũ ?t= / &t= / ?start= */
+    baseUrl = baseUrl.replace(/([?&])(t|start|time)=[^&]*/g, '$1').replace(/[?&]$/, '');
+
+    var t = Math.max(0, Math.floor(seconds));
+
+    /* Chuỗi URL thử theo thứ tự — ưu tiên #t= (chuẩn HTML5) */
+    var candidates = [
+      baseUrl + '#t=' + t,               /* HTML5 media fragment (chuẩn nhất) */
+      baseUrl + '#t=' + t + 's',
+      baseUrl + (baseUrl.indexOf('?') >= 0 ? '&' : '?') + 't=' + t,
+      baseUrl + (baseUrl.indexOf('?') >= 0 ? '&' : '?') + 'start=' + t,
+      baseUrl + (baseUrl.indexOf('?') >= 0 ? '&' : '?') + 'time=' + t
+    ];
+
+    /* Chọn URL đầu tiên — dùng #t= vì HTML5 audio/video nhận */
+    var newUrl = candidates[0];
+
+    console.log('%c[v15.1] 🔄 Reload iframe @ ' + t + 's',
+      'color:#22d3ee;font-weight:900');
+    console.log('   → ' + newUrl);
+
+    /* Reset và nạp lại */
+    try{
+      iframe.src = 'about:blank';
+
+      setTimeout(function(){
+        try{
+          iframe.src = newUrl;
+
+          /* Áp lại volume sau khi iframe load */
+          applyVolumeAfterReload(iframe, 800);
+          applyVolumeAfterReload(iframe, 1800);
+          applyVolumeAfterReload(iframe, 3200);
+
+          /* Thử gửi seekTo command qua postMessage (nếu player hỗ trợ) */
+          trySeekPostMessage(iframe, t, 1000);
+          trySeekPostMessage(iframe, t, 2000);
+          trySeekPostMessage(iframe, t, 3500);
+        }catch(e){}
+      }, 120);
+    }catch(e){}
+  }
+
+  function applyVolumeAfterReload(iframe, delay){
+    setTimeout(function(){
+      if(!iframe || !iframe.parentNode) return;
+      var st = window.__ZNP_MUSIC.state();
+      var v = st.muted ? 0 : st.volume;
+      var msgs = [
+        { event:'command', func:'setVolume', args:[v] },
+        { type:'setVolume', value: v/100 },
+        { type:'setVolume', volume: v/100 },
+        { volume: v/100 }
+      ];
+      msgs.forEach(function(m){
+        try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+        try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+      });
+      try{
+        var doc = iframe.contentDocument || iframe.contentWindow.document;
+        if(doc) doc.querySelectorAll('audio, video').forEach(function(a){
+          try{
+            a.volume = Math.min(1, v/100);
+            a.muted = st.muted;
+            a.currentTime = t;    /* same-origin: seek chính xác */
+          }catch(e){}
+        });
+      }catch(e){}
+    }, delay);
+  }
+
+  function trySeekPostMessage(iframe, seconds, delay){
+    setTimeout(function(){
+      if(!iframe || !iframe.parentNode) return;
+      var msgs = [
+        { event:'command', func:'seekTo', args:[seconds, true] },
+        { event:'command', func:'setCurrentTime', args:[seconds] },
+        { type:'seek', value:seconds },
+        { type:'seek', time:seconds },
+        { type:'seekTo', time:seconds },
+        { action:'seek', time:seconds },
+        { command:'seekTo', value:seconds },
+        { command:'seek', value:seconds },
+        { seek:seconds },
+        { currentTime:seconds }
+      ];
+      msgs.forEach(function(m){
+        try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+        try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+      });
+    }, delay);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     OVERRIDE NÚT BẤM → CỘNG DỒN
+     ═══════════════════════════════════════════════════════ */
+  function patchButtons(){
+    var btns = document.querySelectorAll('.zm15-seekbtn');
+    if(!btns.length) return;
+
+    btns.forEach(function(b){
+      if(b.dataset.cumulativeFixed === '1') return;
+      b.dataset.cumulativeFixed = '1';
+
+      var delta = parseInt(b.getAttribute('data-seek')) || 0;
+
+      /* Đổi nhãn thành "+X" để rõ cộng dồn */
+      var label;
+      if(delta < 60) label = '+' + delta + 's';
+      else{
+        var m = Math.floor(delta/60);
+        var s = delta % 60;
+        label = '+' + m + 'p' + (s ? s + 's' : '');
+      }
+      b.textContent = label;
+      b.title = 'Tua thêm ' + (delta < 60 ? delta + ' giây' : Math.floor(delta/60) + ' phút');
+
+      /* Override onclick — CỘNG DỒN vào vị trí hiện tại */
+      b.onclick = function(e){
+        e.stopPropagation();
+        e.preventDefault();
+        var st = window.__ZNP_MUSIC.state();
+        var cur = st.elapsed || 0;
+        var next = cur + delta;
+        /* Không vượt quá duration */
+        if(next >= st.duration - 1) next = st.duration - 1;
+        if(next < 0) next = 0;
+        window.__ZNP_MUSIC.seekTo(next);
+      };
+    });
+  }
+
+  patchButtons();
+  setInterval(patchButtons, 700);
+
+  /* ═══════════════════════════════════════════════════════
+     FORMAT + TOAST
+     ═══════════════════════════════════════════════════════ */
+  function formatTimeLabel(sec){
+    sec = Math.max(0, Math.floor(sec));
+    var m = Math.floor(sec / 60);
+    var s = sec % 60;
+    if(m === 0) return s + 's';
+    return m + 'p' + (s ? String(s).padStart(2,'0') + 's' : '');
+  }
+
+  function showBigToast(text){
+    var t = document.getElementById('zm15-toast');
+    if(!t){
+      t = document.createElement('div');
+      t.id = 'zm15-toast';
+      document.body.appendChild(t);
+    }
+    t.textContent = text;
+    t.classList.add('show');
+    clearTimeout(t._pt);
+    t._pt = setTimeout(function(){ t.classList.remove('show'); }, 900);
+  }
+
+  console.log('%c[v15.1] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+  console.log('%c   ⏩ Nút tua: CỘNG DỒN (+5s · +15s · +30s · +1p · +2p · +3p)','color:#22d3ee;font-size:11px');
+  console.log('%c   🔄 Reload iframe với #t=X để nhạc nhảy theo','color:#fbbf24;font-size:11px');
+  console.log('%c   📡 Gửi postMessage seekTo cho player hỗ trợ API','color:#a855f7;font-size:11px');
+}
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 PATCH v15.2 — Volume 200% + Menu nhạc trong trận
+   - Volume range 0-200% với nút 🔥 (+50%) và ⚡ (MAX 200%)
+   - Mini player LUÔN hiện kể cả khi vào trận
+   - Nút toggle 👁️ ẩn/hiện menu nhạc — lưu trạng thái
+   - Gửi postMessage volume > 1.0 cho player hỗ trợ
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_V152) return;
+window.__ZNP_V152 = true;
+
+console.log('%c[v15.2] 🚀 Volume boost + menu trong trận...',
+  'color:#22c55e;font-weight:900;font-size:14px');
+
+var LS_VOL_EXT     = 'znp_m15_vol_ext';
+var LS_MINI_HIDDEN = 'znp_m15_mini_hidden';
+
+/* ═══════════════════════════════════════════════════════
+   1. CSS
+   ═══════════════════════════════════════════════════════ */
+if(!document.getElementById('zm152-css')){
+  var st = document.createElement('style');
+  st.id = 'zm152-css';
+  st.textContent = `
+  /* Nút toggle ẩn/hiện mini player */
+  #zm15-mini-toggle{
+    position:fixed;top:84px;left:20px;z-index:9999;
+    width:34px;height:34px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,rgba(13,21,39,.96),rgba(26,14,46,.94));
+    border:2px solid #22d3ee;color:#22d3ee;font-size:16px;
+    cursor:pointer;font-family:system-ui;font-weight:900;
+    box-shadow:0 0 12px rgba(34,211,238,.7);
+    transition:transform .15s, box-shadow .2s, background .2s, color .2s;
+    user-select:none;-webkit-user-select:none;
+    -webkit-tap-highlight-color:transparent;touch-action:manipulation;
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  }
+  #zm15-mini-toggle:hover{
+    transform:scale(1.1);
+    box-shadow:0 0 22px rgba(34,211,238,1);
+  }
+  #zm15-mini-toggle.toggled{
+    background:linear-gradient(135deg,rgba(239,68,68,.22),rgba(185,28,28,.18));
+    border-color:#f87171;color:#fca5a5;
+  }
+  #zm15-mini-toggle.toggled:hover{
+    box-shadow:0 0 22px rgba(239,68,68,.95);
+  }
+
+  /* Trạng thái ẩn của mini */
+  #zm15-mini.mini-hidden{
+    opacity:0 !important;
+    pointer-events:none !important;
+    transform:translateX(-240px) !important;
+    transition:opacity .3s, transform .3s !important;
+  }
+  /* ★ FORCE HIỆN KHI VÀO TRẬN — override mọi inline style ★ */
+  #zm15-mini.in-battle:not(.mini-hidden){
+    opacity:1 !important;
+    pointer-events:auto !important;
+    transform:none !important;
+  }
+
+  /* Nút BOOST (+50%) */
+  .v15btn.boost{
+    background:linear-gradient(135deg,rgba(251,146,60,.28),rgba(239,68,68,.22)) !important;
+    border-color:rgba(251,146,60,.75) !important;
+    color:#fed7aa !important;
+    font-size:14px !important;
+  }
+  .v15btn.boost:hover{
+    box-shadow:0 0 16px rgba(251,146,60,1) !important;
+    background:linear-gradient(135deg,rgba(251,146,60,.5),rgba(239,68,68,.4)) !important;
+  }
+  /* Nút MAX 200% */
+  .v15btn.max{
+    background:linear-gradient(135deg,rgba(239,68,68,.32),rgba(190,18,60,.28)) !important;
+    border-color:rgba(239,68,68,.8) !important;
+    color:#fecaca !important;
+    font-size:14px !important;
+  }
+  .v15btn.max:hover{
+    box-shadow:0 0 16px rgba(239,68,68,1) !important;
+  }
+
+  /* Hiển thị volume > 100% đặc biệt */
+  #zm15-vval.boosted{
+    color:#fbbf24 !important;
+    text-shadow:0 0 12px rgba(251,191,36,1), 0 0 22px rgba(239,68,68,.7) !important;
+    font-size:14px !important;
+    letter-spacing:1px !important;
+    animation:zm152-pulse 1.8s ease-in-out infinite;
+  }
+  #zm15-vval.boosted::after{
+    content:' 🔥';
+    font-size:11px;
+    margin-left:1px;
+  }
+  @keyframes zm152-pulse{
+    0%,100%{ transform:scale(1); }
+    50%{ transform:scale(1.1); }
+  }
+
+  /* Nút volume khi >100% có màu khác */
+  .v15btn.on.boosted{
+    background:linear-gradient(135deg,rgba(251,191,36,.35),rgba(239,68,68,.25)) !important;
+    border-color:#fbbf24 !important;
+    color:#fef3c7 !important;
+  }
+  `;
+  document.head.appendChild(st);
+}
+
+/* ═══════════════════════════════════════════════════════
+   2. HELPERS
+   ═══════════════════════════════════════════════════════ */
+function isInBattleGame(){
+  if(!document.getElementById('vitals-hud')) return false;
+  var hs = document.querySelectorAll('h1');
+  for(var i = 0; i < hs.length; i++){
+    if(hs[i].textContent === 'TỬ TRẬN') return false;
+  }
+  return true;
+}
+function getExtVol(){
+  try{
+    var v = parseInt(localStorage.getItem(LS_VOL_EXT) || '0');
+    if(!isNaN(v) && v >= 0 && v <= 200) return v;
+  }catch(e){}
+  /* Fallback: state v15 */
+  try{
+    var s = window.__ZNP_MUSIC && window.__ZNP_MUSIC.state ? window.__ZNP_MUSIC.state() : null;
+    if(s && typeof s.volume === 'number') return s.volume;
+  }catch(e){}
+  return 100;
+}
+function saveExtVol(v){
+  try{ localStorage.setItem(LS_VOL_EXT, String(v)); }catch(e){}
+}
+function getMiniHidden(){
+  try{ return localStorage.getItem(LS_MINI_HIDDEN) === '1'; }catch(e){ return false; }
+}
+function saveMiniHidden(v){
+  try{ localStorage.setItem(LS_MINI_HIDDEN, v ? '1' : '0'); }catch(e){}
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. GỬI POSTMESSAGE BOOST VOLUME (>1.0)
+   ═══════════════════════════════════════════════════════ */
+function sendBoostVolume(v){
+  var iframe = document.getElementById('zm15-iframe');
+  if(!iframe) return;
+  var ratio = v / 100;
+
+  var msgs = [
+    { event:'command', func:'setVolume', args:[v] },
+    { type:'setVolume', value: ratio },
+    { type:'setVolume', volume: ratio },
+    { type:'setVolume', gain: ratio },
+    { volume: ratio },
+    { gain: ratio },
+    { amplify: ratio },
+    { boost: ratio },
+    { action:'setVolume', value: ratio }
+  ];
+  msgs.forEach(function(m){
+    try{ iframe.contentWindow.postMessage(m, '*'); }catch(e){}
+    try{ iframe.contentWindow.postMessage(JSON.stringify(m), '*'); }catch(e){}
+  });
+
+  /* Same-origin: tăng gain nếu có AudioContext */
+  try{
+    var doc = iframe.contentDocument || iframe.contentWindow.document;
+    if(doc){
+      doc.querySelectorAll('audio, video').forEach(function(a){
+        try{
+          a.volume = Math.min(1, ratio);
+          if(a.__gainBoost && a.__gainBoost.gain){
+            a.__gainBoost.gain.value = ratio;
+          }
+        }catch(e){}
+      });
+    }
+  }catch(e){}
+
+  console.log('%c[v15.2] 🔊 Boost → ' + v + '% (ratio ' + ratio.toFixed(2) + ')',
+    'color:#fbbf24;font-weight:900');
+}
+
+/* ═══════════════════════════════════════════════════════
+   4. UPDATE UI VOLUME HIỂN THỊ
+   ═══════════════════════════════════════════════════════ */
+function updateVolUIExt(){
+  var valEl = document.getElementById('zm15-vval');
+  var muteBtn = document.getElementById('zm15-vmute');
+  if(!valEl) return;
+
+  var v = getExtVol();
+  var s = window.__ZNP_MUSIC && window.__ZNP_MUSIC.state ? window.__ZNP_MUSIC.state() : null;
+  var muted = s && s.muted;
+
+  valEl.textContent = (muted ? '🔇 ' : '') + v + '%';
+  valEl.classList.remove('boosted');
+
+  if(muted || v === 0){
+    valEl.style.color = '#fca5a5';
+    valEl.style.textShadow = 'none';
+  } else if(v > 100){
+    valEl.classList.add('boosted');
+  } else if(v < 30){
+    valEl.style.color = '#fbbf24';
+    valEl.style.textShadow = '';
+  } else {
+    valEl.style.color = '#22d3ee';
+    valEl.style.textShadow = '';
+  }
+
+  /* Đổi màu nút mute khi boost */
+  if(muteBtn){
+    if(v > 100 && !muted){
+      muteBtn.classList.add('boosted');
+    } else {
+      muteBtn.classList.remove('boosted');
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   5. CHỜ v15 SẴN SÀNG
+   ═══════════════════════════════════════════════════════ */
+var tries = 0;
+var waitTimer = setInterval(function(){
+  tries++;
+  if(window.__ZNP_MUSIC && window.__ZNP_MUSIC.setVolume && window.__ZNP_MUSIC.state){
+    clearInterval(waitTimer);
+    init();
+  }
+  if(tries > 80) clearInterval(waitTimer);
+}, 250);
+
+function init(){
+  console.log('[v15.2] ✅ API v15 sẵn sàng, bắt đầu patch...');
+
+  var origSetVolume = window.__ZNP_MUSIC.setVolume;
+
+  /* ═══════════════════════════════════════════════════════
+     6. OVERRIDE setVolume → CHO PHÉP 0-200%
+     ═══════════════════════════════════════════════════════ */
+  window.__ZNP_MUSIC.setVolume = function(v){
+    v = Math.max(0, Math.min(200, Math.round(v)));
+    saveExtVol(v);
+
+    /* Gọi hàm gốc v15 (nó cap ở 100) để logic nội bộ ổn */
+    try{ origSetVolume.call(window.__ZNP_MUSIC, Math.min(100, v)); }catch(e){}
+
+    /* Nếu v > 100: gửi boost riêng */
+    if(v > 100){
+      setTimeout(function(){ sendBoostVolume(v); }, 100);
+      setTimeout(function(){ sendBoostVolume(v); }, 800);
+    }
+
+    /* Update UI ngay */
+    updateVolUIExt();
+  };
+
+  /* ═══════════════════════════════════════════════════════
+     7. INJECT NÚT BOOST 🔥 + MAX ⚡
+     ═══════════════════════════════════════════════════════ */
+  function injectBoostBtns(){
+    var vol = document.querySelector('.vol15');
+    if(!vol) return;
+    if(vol.dataset.v152done === '1') return;
+    vol.dataset.v152done = '1';
+
+    /* Nút BOOST +50% */
+    var boostBtn = document.createElement('button');
+    boostBtn.className = 'v15btn boost';
+    boostBtn.id = 'zm15-vboost';
+    boostBtn.title = 'Tăng thêm 50% (Boost)';
+    boostBtn.textContent = '🔥';
+    boostBtn.onclick = function(e){
+      e.preventDefault(); e.stopPropagation();
+      var cur = getExtVol();
+      var next = Math.min(200, cur + 50);
+      if(next === cur && cur === 200){
+        if(window.__znpToast) window.__znpToast('🔥 Đã ở mức MAX 200%', '#fbbf24', 1500);
+        return;
+      }
+      window.__ZNP_MUSIC.setVolume(next);
+      if(window.__znpToast) window.__znpToast('🔥 Boost: ' + next + '%', '#fbbf24', 1500);
+    };
+
+    /* Nút MAX 200% */
+    var maxBtn = document.createElement('button');
+    maxBtn.className = 'v15btn max';
+    maxBtn.id = 'zm15-vmax';
+    maxBtn.title = 'MAX 200% — bấm lần nữa để reset';
+    maxBtn.textContent = '⚡';
+    maxBtn.onclick = function(e){
+      e.preventDefault(); e.stopPropagation();
+      var cur = getExtVol();
+      var next = (cur >= 200) ? 100 : 200;
+      window.__ZNP_MUSIC.setVolume(next);
+      if(window.__znpToast){
+        window.__znpToast(
+          next === 200 ? '⚡ MAX VOLUME 200%' : '↓ Reset về 100%',
+          next === 200 ? '#ef4444' : '#22d3ee', 1600
+        );
+      }
+    };
+
+    /* Chèn sau nút + */
+    var upBtn = document.getElementById('zm15-vup');
+    if(upBtn && upBtn.parentNode){
+      upBtn.parentNode.insertBefore(boostBtn, upBtn.nextSibling);
+      upBtn.parentNode.insertBefore(maxBtn, boostBtn.nextSibling);
+    } else {
+      vol.appendChild(boostBtn);
+      vol.appendChild(maxBtn);
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     8. NÚT TOGGLE ẨN/HIỆN MENU NHẠC
+     ═══════════════════════════════════════════════════════ */
+  function buildToggle(){
+    if(document.getElementById('zm15-mini-toggle')) return;
+    var tog = document.createElement('div');
+    tog.id = 'zm15-mini-toggle';
+    tog.textContent = '🎵';
+    tog.onclick = function(e){
+      e.stopPropagation();
+      var willHide = !getMiniHidden();
+      saveMiniHidden(willHide);
+      applyMiniState();
+      if(window.__znpToast){
+        window.__znpToast(
+          willHide ? '🙈 Đã ẩn menu nhạc' : '🎵 Đã hiện menu nhạc',
+          '#22d3ee', 1500
+        );
+      }
+    };
+    document.body.appendChild(tog);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     9. ÁP DỤNG TRẠNG THÁI MINI + TOGGLE
+     ═══════════════════════════════════════════════════════ */
+  function applyMiniState(){
+    var mini = document.getElementById('zm15-mini');
+    var tog = document.getElementById('zm15-mini-toggle');
+    if(!mini) return;
+
+    var hidden = getMiniHidden();
+    var inBattle = isInBattleGame();
+
+    /* Reset class cũ */
+    mini.classList.remove('mini-hidden', 'in-battle');
+
+    if(hidden){
+      /* User chủ động ẩn → ẩn */
+      mini.classList.add('mini-hidden');
+      if(tog){
+        tog.classList.add('toggled');
+        tog.textContent = '🙈';
+        tog.title = 'Hiện menu nhạc';
+      }
+    } else if(inBattle){
+      /* Đang chơi + không ẩn → force hiện */
+      mini.classList.add('in-battle');
+      if(tog){
+        tog.classList.remove('toggled');
+        tog.textContent = '🎵';
+        tog.title = 'Ẩn menu nhạc';
+      }
+    } else {
+      /* Menu chính → hiện bình thường */
+      if(tog){
+        tog.classList.remove('toggled');
+        tog.textContent = '🎵';
+        tog.title = 'Ẩn menu nhạc';
+      }
+    }
+  }
+
+  /* Đồng bộ vị trí nút toggle cạnh mini */
+  function syncTogPos(){
+    var mini = document.getElementById('zm15-mini');
+    var tog = document.getElementById('zm15-mini-toggle');
+    if(!mini || !tog) return;
+
+    if(getMiniHidden()){
+      /* Mini ẩn → toggle nằm riêng ở góc */
+      tog.style.left = '20px';
+      tog.style.top = '84px';
+    } else {
+      /* Bám theo vị trí mini */
+      var r = mini.getBoundingClientRect();
+      tog.style.left = (r.right + 8) + 'px';
+      tog.style.top = r.top + 'px';
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     10. LOOP CHÍNH
+     ═══════════════════════════════════════════════════════ */
+  buildToggle();
+  applyMiniState();
+
+  setInterval(function(){
+    /* Chèn nút boost/max khi modal mở */
+    injectBoostBtns();
+    /* Cập nhật UI volume */
+    updateVolUIExt();
+    /* Áp dụng trạng thái mini */
+    applyMiniState();
+    /* Sync vị trí toggle */
+    syncTogPos();
+    /* Nếu volume > 100 gửi boost định kỳ */
+    var v = getExtVol();
+    if(v > 100 && document.getElementById('zm15-iframe')){
+      sendBoostVolume(v);
+    }
+  }, 500);
+
+  /* MutationObserver để chèn nút nhanh khi modal mở */
+  if(document.body){
+    var mo = new MutationObserver(function(){
+      if(document.getElementById('zm15-modal')){
+        clearTimeout(mo._t);
+        mo._t = setTimeout(function(){
+          injectBoostBtns();
+          updateVolUIExt();
+        }, 80);
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
+
+  console.log('%c[v15.2] ✅ HOÀN TẤT','color:#22c55e;font-weight:900;font-size:14px');
+  console.log('%c   🔊 Volume 0-200% · 🔥 +50% · ⚡ MAX','color:#fbbf24;font-size:11px');
+  console.log('%c   🎵 Menu nhạc LUÔN hiện kể cả trong trận','color:#22d3ee;font-size:11px');
+  console.log('%c   👁️ Nút 🎵 cạnh mini để ẩn/hiện menu nhạc','color:#a855f7;font-size:11px');
+}
+
+})();
+</script>
+<script>
+/* =========================================================
+   🎵 PATCH v15.3 — CHUYỂN MUSIC PLAYER SANG PHẢI-DƯỚI MAP
+   - Mini player: góc phải, dưới cụm Minimap + Clock HUD
+   - Nút toggle 🎵 nằm cạnh bên trái của mini
+   - Không đè Weather Hub (đang ở trái)
+   - Không đè các nút chức năng (đang xếp từ dưới lên)
+   - Responsive cho mobile
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_V153) return;
+window.__ZNP_V153 = true;
+
+console.log('%c[v15.3] 📍 Đang di chuyển Music Player sang phải-dưới map...',
+  'color:#fbbf24;font-weight:900;font-size:14px');
+
+/* ═══════════════════════════════════════════════════════
+   1. CSS — VỊ TRÍ MỚI (bên phải, dưới map + clock)
+   ═══════════════════════════════════════════════════════ */
+if(!document.getElementById('zm153-pos-css')){
+  var st = document.createElement('style');
+  st.id = 'zm153-pos-css';
+  st.textContent = `
+  /* ══════ MINI PLAYER — PHẢI, DƯỚI MAP ══════ */
+  #zm15-mini{
+    top: 232px !important;
+    left: auto !important;
+    right: 14px !important;
+    z-index: 9996 !important;
+  }
+
+  /* ══════ NÚT TOGGLE 🎵 — BÊN TRÁI CỦA MINI ══════ */
+  #zm15-mini-toggle{
+    top: 232px !important;
+    left: auto !important;
+    right: 236px !important;   /* cạnh trái của mini */
+    z-index: 9997 !important;
+  }
+
+  /* Khi mini bị ẩn → toggle nằm sát phải, ngay dưới clock */
+  #zm15-mini.mini-hidden ~ #zm15-mini-toggle,
+  body:has(#zm15-mini.mini-hidden) #zm15-mini-toggle{
+    right: 14px !important;
+  }
+
+  /* ══════ MODAL VẪN GIỮA MÀN HÌNH (không đổi) ══════ */
+  #zm15-modal.open{
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* ══════ RESPONSIVE ══════ */
+  @media (max-width: 768px){
+    #zm15-mini{
+      top: 220px !important;
+      right: 10px !important;
+    }
+    #zm15-mini-toggle{
+      top: 220px !important;
+      right: 216px !important;
+    }
+  }
+  @media (max-width: 500px){
+    #zm15-mini{
+      top: 208px !important;
+      right: 8px !important;
+      padding: 6px 9px 6px 7px !important;
+      gap: 7px !important;
+    }
+    #zm15-mini-toggle{
+      top: 208px !important;
+      right: 190px !important;
+      width: 30px !important;
+      height: 30px !important;
+      font-size: 14px !important;
+    }
+  }
+  `;
+  document.head.appendChild(st);
+}
+
+/* ═══════════════════════════════════════════════════════
+   2. FORCE SET VỊ TRÍ ĐỊNH KỲ (đề phòng inline style từ v15.2)
+   ═══════════════════════════════════════════════════════ */
+function applyPos(){
+  var m = document.getElementById('zm15-mini');
+  var t = document.getElementById('zm15-mini-toggle');
+
+  if(m){
+    /* Đảm bảo không bị override inline */
+    m.style.setProperty('top',    '232px',  'important');
+    m.style.setProperty('left',   'auto',   'important');
+    m.style.setProperty('right',  '14px',   'important');
+    m.style.setProperty('bottom', 'auto',   'important');
+  }
+
+  if(t){
+    /* Toggle ở bên trái mini khi mini hiện */
+    var miniHidden = m && m.classList.contains('mini-hidden');
+    t.style.setProperty('top',    '232px',  'important');
+    t.style.setProperty('left',   'auto',   'important');
+    t.style.setProperty('right',  miniHidden ? '14px' : '236px', 'important');
+    t.style.setProperty('bottom', 'auto',   'important');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. THEO DÕI THAY ĐỔI CLASS mini-hidden
+   ═══════════════════════════════════════════════════════ */
+function watchMiniClass(){
+  var m = document.getElementById('zm15-mini');
+  if(!m || m.dataset.v153w) return;
+  m.dataset.v153w = '1';
+
+  var mo = new MutationObserver(function(){
+    /* Khi mini ẩn/hiện → cập nhật vị trí toggle */
+    setTimeout(applyPos, 20);
+  });
+  mo.observe(m, { attributes: true, attributeFilter: ['class', 'style'] });
+}
+
+/* ═══════════════════════════════════════════════════════
+   4. LOOP — ÁP DỤNG LIÊN TỤC (đề phòng bị override)
+   ═══════════════════════════════════════════════════════ */
+setInterval(function(){
+  applyPos();
+  watchMiniClass();
+}, 300);
+
+/* Chạy ngay khi có element */
+applyPos();
+
+/* ═══════════════════════════════════════════════════════
+   5. KHỞI ĐỘNG NGAY KHI DOM READY
+   ═══════════════════════════════════════════════════════ */
+function ready(cb){
+  var r = document.getElementById('root');
+  if(r && r.children.length > 0) return cb();
+  setTimeout(function(){ ready(cb); }, 300);
+}
+ready(function(){
+  setTimeout(function(){
+    applyPos();
+    watchMiniClass();
+    console.log('%c[v15.3] ✅ Music Player đã chuyển sang PHẢI-DƯỚI MAP',
+      'color:#22c55e;font-weight:900;font-size:14px');
+    console.log('%c   📍 Vị trí: top 232px, right 14px (dưới clock HUD)',
+      'color:#22d3ee;font-size:11px');
+    console.log('%c   🎵 Nút toggle 🎵 ở bên trái mini player',
+      'color:#a855f7;font-size:11px');
+  }, 1800);
+});
+
+/* ═══════════════════════════════════════════════════════
+   6. API TOÀN CỤC
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_V153 = {
+  reposition: applyPos,
+  /* Cho phép đổi vị trí thủ công */
+  setPosition: function(top, right){
+    if(typeof top === 'number'){
+      document.getElementById('zm153-pos-css').textContent =
+        document.getElementById('zm153-pos-css').textContent
+          .replace(/top:\s*232px\s*!important/g, 'top: ' + top + 'px !important');
+    }
+    if(typeof right === 'number'){
+      /* ... có thể custom nếu cần */
+    }
+    applyPos();
+  }
+};
 
 })();
 </script>
