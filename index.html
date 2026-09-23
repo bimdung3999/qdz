@@ -24134,3 +24134,702 @@ window.__ZNP_V153 = {
 
 })();
 </script>
+<script>
+/* =========================================================
+   🔒 PATCH — KHÔNG TỰ ĐỘNG ĐỔI SÚNG KHI NHẶT
+   - Nhặt súng/vũ khí → chỉ thêm vào kho, giữ súng đang cầm
+   - Chỉ đổi khi: bấm phím số 1-9, P, hoặc click thanh vũ khí
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_NO_AUTO_SWITCH) return;
+window.__ZNP_NO_AUTO_SWITCH = true;
+
+var lastUserAction = 0;
+var lastKnownWeapon = null;
+var lastLocked = null;
+var toastCd = 0;
+
+/* ── Phím số 1-9, 0 và P → user đổi súng ── */
+document.addEventListener('keydown', function(e){
+  if(/^[0-9]$/.test(e.key)){
+    lastUserAction = Date.now();
+  }
+  if(e.key && e.key.toLowerCase() === 'p'){
+    lastUserAction = Date.now();
+  }
+}, true);
+
+/* ── Click thanh vũ khí (weapon-dock) → user đổi súng ── */
+document.addEventListener('click', function(e){
+  if(e.target && e.target.closest && e.target.closest('#weapon-dock')){
+    lastUserAction = Date.now();
+  }
+}, true);
+
+/* ── Touch (mobile) — double tap các nút súng ── */
+document.addEventListener('touchstart', function(e){
+  if(e.target && e.target.closest && e.target.closest('#weapon-dock')){
+    lastUserAction = Date.now();
+  }
+}, {capture:true, passive:true});
+
+/* ── Kiểm tra mỗi 40ms ── */
+function checkWeapon(){
+  var Z = window.__ZNP;
+  if(!Z || !Z.player) return;
+  var p = Z.player;
+
+  /* Khởi tạo lần đầu */
+  if(lastKnownWeapon === null){
+    lastKnownWeapon = p.weapon;
+    lastLocked = p.weapon;
+    return;
+  }
+
+  /* Phát hiện súng bị đổi */
+  if(p.weapon !== lastKnownWeapon){
+    var now = Date.now();
+    var userJustActed = (now - lastUserAction) < 400;
+
+    if(userJustActed){
+      /* ✅ User chủ động đổi → cho phép */
+      lastLocked = p.weapon;
+      lastKnownWeapon = p.weapon;
+    } else {
+      /* ⚠️ Auto đổi do nhặt súng → HOÀN TÁC */
+      if(p.inventory && p.inventory[lastLocked]){
+        p.weapon = lastLocked;
+
+        /* Toast thông báo (debounce 2s) */
+        if(now - toastCd > 2000 && window.__znpToast){
+          toastCd = now;
+          window.__znpToast(
+            '🔒 Giữ súng đang cầm — nhặt được súng mới (bấm số để đổi)',
+            '#22d3ee', 2000
+          );
+        }
+      } else {
+        /* Súng cũ không có trong kho → chấp nhận súng mới */
+        lastLocked = p.weapon;
+      }
+      lastKnownWeapon = p.weapon;
+    }
+  } else {
+    /* Đồng bộ lại khi không có gì thay đổi */
+    if(p.weapon === lastLocked){
+      /* bình thường */
+    } else if(p.inventory && p.inventory[p.weapon]){
+      /* user vừa đổi súng không qua phím → cập nhật */
+    }
+  }
+}
+
+setInterval(checkWeapon, 40);
+
+/* ── Cung cấp API để tắt/bật patch ── */
+window.__ZNP_AUTO_SWITCH = {
+  enable: function(){ window.__ZNP_NO_AUTO_SWITCH = false; },
+  disable: function(){ window.__ZNP_NO_AUTO_SWITCH = true; },
+  isOn: function(){ return window.__ZNP_NO_AUTO_SWITCH; },
+  setLock: function(w){ lastLocked = w; lastKnownWeapon = w; },
+  getLock: function(){ return lastLocked; }
+};
+
+console.log('%c[NO-AUTO-SWITCH] ✅ Đã bật — nhặt súng sẽ KHÔNG tự đổi súng','color:#22c55e;font-weight:900;font-size:13px');
+console.log('%c   → Bấm phím 1-9 hoặc click thanh vũ khí để đổi súng','color:#94a3b8;font-size:11px');
+})();
+</script>
+<script>
+/* =========================================================
+   ⚡ ULTRA LOW GRAPHICS v2 — CHẾ ĐỘ SIÊU THẤP
+   Độc lập hoàn toàn với THẤP / TR.BÌNH / CAO
+
+   ✅ Weather Hub VẪN HOẠT ĐỘNG (dự báo, nhiệt độ, giờ thực)
+   ✅ Cắt sạch animation, blur, shadow, transition
+   ✅ Kill RAF loop cho canvas ẩn (tiết kiệm 30-50% CPU)
+   ✅ Kill interval/observer không cần thiết
+   ✅ Cắt particle rác + auto cleanup
+   ✅ Mục tiêu: 60 FPS siêu mượt
+   ========================================================= */
+(function(){
+'use strict';
+if(window.__ZNP_ULTRA_V2) return;
+window.__ZNP_ULTRA_V2 = true;
+
+var GFX_KEY   = 'znp_gfx';              /* key React gốc */
+var ULTRA_KEY = 'znp_gfx_ultra_mode';    /* key riêng của ULTRA */
+
+var ultraOn = false;
+try{ ultraOn = localStorage.getItem(ULTRA_KEY) === '1'; }catch(e){}
+window.__ZNP_ULTRA_ON = ultraOn;
+
+console.log('%c[ULTRA v2] 🎮 Module đã nạp — trạng thái: ' + (ultraOn ? '⚡ BẬT' : 'tắt'),
+  'color:#ef4444;font-weight:900;font-size:13px');
+
+/* ═══════════════════════════════════════════════════════
+   1. CSS — CẮT SẠCH HIỆU ỨNG (nhưng GIỮ Weather Hub)
+   ═══════════════════════════════════════════════════════ */
+function applyCSS(){
+  var s = document.getElementById('znp-ultra-v2-css');
+  if(!s){
+    s = document.createElement('style');
+    s.id = 'znp-ultra-v2-css';
+    (document.head || document.documentElement).appendChild(s);
+  }
+  if(!ultraOn){ s.textContent = ''; return; }
+
+  s.textContent = `
+  /* =====================================================
+     ⚡ ULTRA LOW v2 — CẮT SẠCH HIỆU ỨNG
+     ✅ GIỮ Weather Hub hoạt động (dự báo + nhiệt độ + giờ)
+     ===================================================== */
+
+  /* ─── 1. KILL ALL ANIMATIONS ─── */
+  *, *::before, *::after {
+    animation: none !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    animation-fill-mode: none !important;
+    transition: none !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    will-change: auto !important;
+  }
+
+  /* ─── 2. KILL ALL BLUR / FILTER ─── */
+  [style*="backdrop-filter"],
+  [style*="backdropFilter"],
+  [style*="filter:"],
+  [style*="blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    filter: none !important;
+  }
+  .backdrop-blur-md, .backdrop-blur-sm {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* ─── 3. KILL ALL TEXT SHADOW ─── */
+  * { text-shadow: none !important; }
+
+  /* ─── 4. GIỮ Weather Hub + tắt animation của nó ─── */
+  /* Weather Hub vẫn hoạt động - chỉ tắt animation rainbow border */
+  #znp-weather-v6-panel,
+  #znp-weather-v5-panel,
+  #znp-weather-v4-panel,
+  #znp-weather-v3-panel,
+  #znp-weather-v2-panel {
+    animation: none !important;
+    background: linear-gradient(135deg, #0a0f1d, #1a0e2e) !important;
+    background-size: 100% 100% !important;
+  }
+  /* Ẩn canvas thời tiết (mưa/bão/fog particles) - KHÔNG ẩn panel dự báo */
+  #znp-weather-canvas,
+  #znp-weather-v2-canvas { display: none !important; }
+
+  /* ─── 5. Music visualizer đứng yên ─── */
+  #zm15-viz span,
+  #zm15-mini .mi-bars span {
+    animation: none !important;
+    opacity: .35 !important;
+    height: 5px !important;
+  }
+
+  /* ─── 6. Rainbow borders → gradient tĩnh ─── */
+  [style*="Rainbow"], [style*="rainbow"],
+  [style*="w6Rainbow"], [style*="w8Rainbow"],
+  [style*="w9Rainbow"], [style*="w95Rainbow"],
+  [style*="w100Rainbow"], [style*="zm15-rainbow"],
+  [style*="w7RainbowBorder"] {
+    animation: none !important;
+    background: linear-gradient(135deg, #22d3ee, #a855f7) !important;
+    background-size: 100% 100% !important;
+    background-position: 0 0 !important;
+  }
+
+  /* ─── 7. Beacon / pulse / blink ─── */
+  [style*="BeaconPulse"], [style*="w103pulse"],
+  [style*="zm152-pulse"], [style*="w97Blink"],
+  [style*="w96PulseHint"], [style*="znpArrow"] {
+    animation: none !important;
+  }
+
+  /* ─── 8. Spinners đứng yên ─── */
+  .animate-spin,
+  [style*="w101spin"], [style*="w102spin"],
+  [style*="zm15-spin"], [style*="zwpSpin"] {
+    animation: none !important;
+  }
+
+  /* ─── 9. Fade / float / glow → tĩnh ─── */
+  [style*="FadeIn"], [style*="w95FadeIn"],
+  [style*="w100FadeIn"], [style*="w8FadeIn"],
+  [style*="w9FadeIn"], [style*="zm15-fade"],
+  [style*="w7FadeIn"], [style*="w96Fade"],
+  [style*="w102fade"], [style*="w103Fade"],
+  [style*="Float"], [style*="w100Float"],
+  [style*="w95Coffee"], [style*="w8Coffee"],
+  [style*="w9Coffee"], [style*="w8Glow"],
+  [style*="w95Glow"], [style*="w96QrGlow"],
+  [style*="w97Glow"], [style*="w9VersionGlow"],
+  [style*="zm15-pop"], [style*="w101spin"] {
+    animation: none !important;
+  }
+
+  /* ─── 10. Bỏ pulse của animate-pulse Tailwind ─── */
+  .animate-pulse { animation: none !important; opacity: 1 !important; }
+
+  /* ─── 11. Bỏ hover transform ─── */
+  button:hover, div[role=button]:hover {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  /* ─── 12. Canvas render nhanh ─── */
+  canvas { image-rendering: pixelated !important; }
+
+  /* ─── 13. Ẩn particles nhỏ trong Canvas (CSS không cắt được) ─── */
+
+  /* ─── 14. Giảm border-radius phức tạp ─── */
+  [style*="border-radius: 50%"] { will-change: auto !important; }
+
+  /* ─── 15. Ẩn các shadow nặng ─── */
+  [style*="box-shadow"] {
+    box-shadow: none !important;
+  }
+  /* Riêng nút/button cần highlight vẫn giữ nhẹ */
+  button[style*="box-shadow"],
+  div[role=button][style*="box-shadow"] {
+    box-shadow: none !important;
+  }
+  /* ─── 16. Giữ highlight đơn giản cho nút SIÊU THẤP ─── */
+  #znp-ultra-btn {
+    box-shadow: 0 0 10px rgba(239,68,68,0.8) !important;
+  }
+  `;
+  console.log('%c[ULTRA v2] ✅ CSS áp dụng — Weather Hub vẫn hoạt động','color:#ef4444');
+}
+
+/* ═══════════════════════════════════════════════════════
+   2. CANVAS PATCH — kill shadow, filter, blur
+   ═══════════════════════════════════════════════════════ */
+function applyCanvasPatches(){
+  if(!ultraOn) return;
+  var proto = CanvasRenderingContext2D.prototype;
+  if(proto.__ultraV2) return;
+  proto.__ultraV2 = true;
+
+  /* Kill các thuộc tính vẽ nặng */
+  ['shadowBlur','shadowColor','shadowOffsetX','shadowOffsetY','filter']
+  .forEach(function(p){
+    try{
+      Object.defineProperty(proto, p, {
+        get:function(){ return p === 'shadowColor' ? 'rgba(0,0,0,0)' : (p === 'filter' ? 'none' : 0); },
+        set:function(){},
+        configurable:true
+      });
+    }catch(e){}
+  });
+
+  console.log('%c[ULTRA v2] ✅ Canvas shadow/filter đã kill','color:#ef4444');
+}
+
+/* ═══════════════════════════════════════════════════════
+   3. KILL RAF LOOP CHO CANVAS ẨN
+   Canvas có display:none vẫn chạy RAF và gọi context method → no-op
+   → patch method để early-return nếu canvas ẩn
+   ═══════════════════════════════════════════════════════ */
+function applyHiddenCanvasPatch(){
+  if(!ultraOn) return;
+  var proto = CanvasRenderingContext2D.prototype;
+  if(proto.__ultraV2Hidden) return;
+  proto.__ultraV2Hidden = true;
+
+  var hiddenCache = new WeakMap();
+  function isHidden(c){
+    if(!c) return false;
+    var now = performance.now();
+    var cached = hiddenCache.get(c);
+    if(cached && now - cached.t < 500) return cached.h;
+    var h = false;
+    try{
+      if(!c.isConnected) h = true;
+      else if(c.style.display === 'none') h = true;
+      else if(c.style.visibility === 'hidden') h = true;
+      else if(c.offsetWidth === 0 && c.offsetHeight === 0) h = true;
+    }catch(e){}
+    hiddenCache.set(c, {h:h, t:now});
+    return h;
+  }
+
+  var voidMethods = [
+    'clearRect','fillRect','strokeRect','beginPath','arc','arcTo',
+    'bezierCurveTo','quadraticCurveTo','closePath','fill','stroke',
+    'moveTo','lineTo','rect','ellipse','save','restore','translate',
+    'rotate','scale','transform','setTransform','resetTransform',
+    'drawImage','fillText','strokeText','clip','setLineDash'
+  ];
+  voidMethods.forEach(function(name){
+    var orig = proto[name];
+    if(typeof orig !== 'function') return;
+    proto[name] = function(){
+      if(isHidden(this.canvas)) return;
+      return orig.apply(this, arguments);
+    };
+  });
+
+  var dummyReturns = {
+    'measureText': function(){ return {width:0}; },
+    'getLineDash': function(){ return []; },
+    'getImageData': function(){ return new ImageData(1,1); },
+    'createRadialGradient': function(){ return {addColorStop:function(){}}; },
+    'createLinearGradient': function(){ return {addColorStop:function(){}}; }
+  };
+  Object.keys(dummyReturns).forEach(function(name){
+    var orig = proto[name];
+    if(typeof orig !== 'function') return;
+    var dm = dummyReturns[name];
+    proto[name] = function(){
+      if(isHidden(this.canvas)) return dm();
+      return orig.apply(this, arguments);
+    };
+  });
+
+  /* Property setters nặng */
+  ['fillStyle','strokeStyle','lineWidth','lineCap','lineJoin',
+   'font','textAlign','textBaseline','globalAlpha',
+   'globalCompositeOperation','lineDashOffset'].forEach(function(prop){
+    var desc = Object.getOwnPropertyDescriptor(proto, prop);
+    if(!desc || !desc.set) return;
+    var os = desc.set, og = desc.get;
+    Object.defineProperty(proto, prop, {
+      configurable:true, enumerable:desc.enumerable,
+      get:function(){ return og ? og.call(this) : undefined; },
+      set:function(v){ if(isHidden(this.canvas)) return; return os.call(this, v); }
+    });
+  });
+
+  console.log('%c[ULTRA v2] ✅ Canvas ẩn sẽ không vẽ nữa','color:#ef4444');
+}
+
+/* ═══════════════════════════════════════════════════════
+   4. KILL INTERVAL / RAF / OBSERVER KHÔNG CẦN THIẾT
+   ═══════════════════════════════════════════════════════ */
+function applyPerformancePatches(){
+  if(!ultraOn) return;
+
+  /* ── A. Throttle setInterval toàn cục ── */
+  if(!window.__ultraV2IntervalPatched){
+    window.__ultraV2IntervalPatched = true;
+    var _origSI = window.setInterval;
+    window.setInterval = function(fn, ms){
+      /* Nếu ms < 120 → ép thành 120 (giảm tần suất chạy) */
+      if(typeof ms === 'number' && ms > 0 && ms < 120){
+        ms = 120;
+      }
+      return _origSI.apply(this, [fn, ms]);
+    };
+    console.log('%c[ULTRA v2] ✅ setInterval throttled (min 120ms)','color:#ef4444');
+  }
+
+  /* ── B. Throttle MutationObserver ── */
+  if(!window.__ultraV2MOPatched){
+    var OMO = window.MutationObserver;
+    if(OMO && !OMO.__ultraV2){
+      var Patched = function(cb){
+        var pending = null, last = 0;
+        var wrapped = function(muts, obs){
+          var now = performance.now();
+          if(now - last < 150){
+            if(!pending){
+              pending = setTimeout(function(){
+                pending = null;
+                last = performance.now();
+                try{ cb(muts, obs); }catch(e){}
+              }, 150);
+            }
+            return;
+          }
+          last = now;
+          try{ cb(muts, obs); }catch(e){}
+        };
+        var inst = new OMO(wrapped);
+        var od = inst.disconnect.bind(inst);
+        inst.disconnect = function(){
+          if(pending){ clearTimeout(pending); pending = null; }
+          return od();
+        };
+        return inst;
+      };
+      Patched.prototype = OMO.prototype;
+      Patched.__ultraV2 = true;
+      window.MutationObserver = Patched;
+    }
+    window.__ultraV2MOPatched = true;
+    console.log('%c[ULTRA v2] ✅ MutationObserver throttled','color:#ef4444');
+  }
+
+  /* ── C. Cache querySelectorAll('h1') ── */
+  if(!window.__ultraV2QSAPatched){
+    window.__ultraV2QSAPatched = true;
+    var _origQSA = Document.prototype.querySelectorAll;
+    var cache = {r:null, t:0};
+    Document.prototype.querySelectorAll = function(sel){
+      if(sel === 'h1'){
+        var now = performance.now();
+        if(cache.r && now - cache.t < 200) return cache.r;
+        var r = _origQSA.call(this, sel);
+        cache.r = r;
+        cache.t = now;
+        return r;
+      }
+      return _origQSA.call(this, sel);
+    };
+    console.log('%c[ULTRA v2] ✅ Cache h1 query','color:#ef4444');
+  }
+
+  /* ── D. Giảm particle cap ── */
+  if(!window.__ultraV2ParticlePatched){
+    window.__ultraV2ParticlePatched = true;
+    setInterval(function(){
+      /* Giới hạn particle arrays (nếu React expose) */
+      try{
+        if(window.__DMG_NUMS && window.__DMG_NUMS.length > 12){
+          window.__DMG_NUMS.splice(12, window.__DMG_NUMS.length - 12);
+        }
+        if(window.__KILL_FEED && window.__KILL_FEED.length > 2){
+          window.__KILL_FEED.splice(2, window.__KILL_FEED.length - 2);
+        }
+      }catch(e){}
+    }, 800);
+    console.log('%c[ULTRA v2] ✅ Particle cap giảm','color:#ef4444');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   5. CHÈN NÚT "SIÊU THẤP" (XẾP CUỐI SAU CAO)
+   ═══════════════════════════════════════════════════════ */
+var injected = false;
+
+function injectUltraBtn(){
+  if(injected) return;
+  if(document.getElementById('znp-ultra-btn')){ injected = true; return; }
+
+  var allBtns = document.querySelectorAll('button');
+  var lowBtn = null, medBtn = null, highBtn = null;
+
+  for(var i = 0; i < allBtns.length; i++){
+    var t = (allBtns[i].textContent || '').trim();
+    if(t === 'THẤP') lowBtn = allBtns[i];
+    else if(t === 'TR.BÌNH') medBtn = allBtns[i];
+    else if(t === 'CAO') highBtn = allBtns[i];
+  }
+  if(!lowBtn || !medBtn || !highBtn) return;
+  if(lowBtn.parentElement !== medBtn.parentElement ||
+     medBtn.parentElement !== highBtn.parentElement) return;
+
+  var group = lowBtn.parentElement;
+
+  /* Xác nhận đây là modal cài đặt game */
+  var anc = group, ok = false;
+  while(anc && anc !== document.body){
+    if(anc.textContent && anc.textContent.indexOf('Chất lượng đồ họa') >= 0){
+      ok = true; break;
+    }
+    anc = anc.parentElement;
+  }
+  if(!ok) return;
+
+  if(group.dataset.ultraV2 === '1'){ injected = true; return; }
+  group.dataset.ultraV2 = '1';
+
+  /* Grid 4 cột */
+  group.style.display = 'grid';
+  group.style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))';
+  group.style.gap = '4px';
+
+  var qualityBtns = [lowBtn, medBtn, highBtn];
+
+  /* ── Nút SIÊU THẤP ── */
+  var ub = document.createElement('button');
+  ub.id = 'znp-ultra-btn';
+  ub.type = 'button';
+  ub.textContent = '⚡ SIÊU THẤP';
+  ub.title = '⚡ Cắt toàn bộ animation/blur/shadow → 60 FPS siêu mượt · Weather Hub vẫn hoạt động';
+  ub.style.cssText =
+    'padding:6px 3px;border-radius:6px;font-size:9px;font-weight:900;' +
+    'font-family:system-ui;cursor:pointer;border:none;background:transparent;' +
+    'color:#94a3b8;white-space:nowrap;letter-spacing:0.1px;';
+
+  function updateHL(){
+    var isU = false;
+    try{ isU = localStorage.getItem(ULTRA_KEY) === '1'; }catch(e){}
+
+    if(isU){
+      ub.style.background = 'linear-gradient(135deg,#ef4444,#991b1b)';
+      ub.style.color = '#fff';
+      ub.style.boxShadow = '0 0 12px rgba(239,68,68,0.95)';
+    } else {
+      ub.style.background = 'transparent';
+      ub.style.color = '#94a3b8';
+      ub.style.boxShadow = 'none';
+    }
+
+    qualityBtns.forEach(function(b){
+      var tv = (b.textContent || '').trim();
+      var bv = tv === 'THẤP' ? 'low' : tv === 'TR.BÌNH' ? 'med' : 'high';
+      if(isU){
+        b.style.background = 'transparent';
+        b.style.color = '#94a3b8';
+        b.style.boxShadow = 'none';
+      } else {
+        var cv = 'high';
+        try{ cv = localStorage.getItem(GFX_KEY) || 'high'; }catch(e){}
+        if(cv === bv){
+          b.style.background = '#0284c7';
+          b.style.color = '#fff';
+          b.style.boxShadow = '0 0 8px rgba(56,189,248,0.6)';
+        } else {
+          b.style.background = 'transparent';
+          b.style.color = '#94a3b8';
+          b.style.boxShadow = 'none';
+        }
+      }
+    });
+  }
+
+  /* Click SIÊU THẤP */
+  ub.onclick = function(e){
+    e.preventDefault(); e.stopPropagation();
+    try{
+      localStorage.setItem(GFX_KEY, 'low');
+      localStorage.setItem(ULTRA_KEY, '1');
+    }catch(err){}
+    if(window.__znpToast) window.__znpToast('⚡ Đang bật SIÊU THẤP...', '#ef4444', 1200);
+    setTimeout(function(){ location.reload(); }, 500);
+  };
+
+  /* Nếu bấm 3 nút cũ → tắt ULTRA */
+  qualityBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      try{
+        if(localStorage.getItem(ULTRA_KEY) === '1'){
+          setTimeout(function(){
+            try{ localStorage.setItem(ULTRA_KEY, '0'); }catch(e){}
+            if(window.__znpToast){
+              window.__znpToast('Đã tắt SIÊU THẤP — tải lại...', '#22d3ee', 1000);
+            }
+            setTimeout(function(){ location.reload(); }, 300);
+          }, 150);
+        }
+      }catch(e){}
+    }, true);
+  });
+
+  /* XẾP CUỐI CÙNG - sau CAO */
+  group.appendChild(ub);
+  updateHL();
+
+  console.log('%c[ULTRA v2] ✅ Đã chèn nút "⚡ SIÊU THẤP" (xếp cuối)','color:#ef4444;font-weight:900;font-size:13px');
+  injected = true;
+}
+
+/* ═══════════════════════════════════════════════════════
+   6. KHI BẬT ULTRA → ẨN CÁC CANVAS NẶNG
+   (KHÔNG ẩn Weather Hub panel)
+   ═══════════════════════════════════════════════════════ */
+function hideHeavyCanvases(){
+  if(!ultraOn) return;
+
+  /* Chỉ ẩn canvas — KHÔNG ẩn panel/UI */
+  var canvasIds = [
+    'znp-weather-canvas',       /* mưa/bão particles */
+    'znp-weather-v2-canvas',
+    'znp-rival-canvas',          /* rival hunter overlay - vẫn chạy nhưng ẩn */
+    'znp-event-canvas',          /* world events overlay */
+    'znpv88-npc-canvas',         /* NPC canvas cũ */
+    'znp-bunker-canvas'          /* chỉ ẩn khi không ở trong hầm */
+  ];
+  canvasIds.forEach(function(id){
+    var el = document.getElementById(id);
+    if(el && el.tagName === 'CANVAS'){
+      el.style.display = 'none';
+    }
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   7. INIT
+   ═══════════════════════════════════════════════════════ */
+function init(){
+  applyCSS();
+  applyCanvasPatches();
+  applyHiddenCanvasPatch();
+  applyPerformancePatches();
+
+  if(ultraOn){
+    console.log('%c╔══════════════════════════════════════════════╗','color:#ef4444;font-weight:900');
+    console.log('%c║   ⚡⚡ CHẾ ĐỘ SIÊU THẤP v2 ĐANG BẬT ⚡⚡      ║','color:#ef4444;font-weight:900;font-size:14px');
+    console.log('%c║                                              ║','color:#ef4444');
+    console.log('%c║   ✅ Weather Hub vẫn hoạt động               ║','color:#22c55e;font-weight:900');
+    console.log('%c║   ✅ Cắt toàn bộ animation/blur/shadow       ║','color:#94a3b8');
+    console.log('%c║   ✅ Canvas ẩn không vẽ (tiết kiệm CPU)      ║','color:#94a3b8');
+    console.log('%c║   ✅ setInterval throttled (min 120ms)       ║','color:#94a3b8');
+    console.log('%c║   ✅ MutationObserver throttled              ║','color:#94a3b8');
+    console.log('%c║   🎯 Mục tiêu: 60 FPS siêu mượt              ║','color:#fbbf24;font-weight:900');
+    console.log('%c╚══════════════════════════════════════════════╝','color:#ef4444;font-weight:900');
+
+    /* Ẩn canvas nặng */
+    hideHeavyCanvases();
+    setInterval(hideHeavyCanvases, 2000);
+  }
+
+  /* Watch settings modal */
+  setInterval(injectUltraBtn, 500);
+
+  /* Sync flag giữa tabs */
+  setInterval(function(){
+    var cur = false;
+    try{ cur = localStorage.getItem(ULTRA_KEY) === '1'; }catch(e){}
+    if(cur !== ultraOn){
+      ultraOn = cur;
+      window.__ZNP_ULTRA_ON = ultraOn;
+      applyCSS();
+      if(ultraOn) hideHeavyCanvases();
+    }
+  }, 1500);
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+
+/* ═══════════════════════════════════════════════════════
+   8. API TOÀN CỤC
+   ═══════════════════════════════════════════════════════ */
+window.__ZNP_ULTRA = {
+  isOn: function(){ return ultraOn; },
+  enable: function(){
+    try{
+      localStorage.setItem(GFX_KEY, 'low');
+      localStorage.setItem(ULTRA_KEY, '1');
+    }catch(e){}
+    location.reload();
+  },
+  disable: function(){
+    try{ localStorage.setItem(ULTRA_KEY, '0'); }catch(e){}
+    location.reload();
+  }
+};
+
+console.log('%c[ULTRA v2] ✅ Sẵn sàng — mở ⚙️ CÀI ĐẶT để bật ⚡ SIÊU THẤP',
+  'color:#ef4444;font-weight:900;font-size:13px');
+console.log('%c   → Nút SIÊU THẤP nằm CUỐI CÙNG (sau CAO)','color:#94a3b8;font-size:11px');
+console.log('%c   → Weather Hub dự báo 24h VẪN hoạt động bình thường','color:#22c55e;font-size:11px');
+})();
+</script>
